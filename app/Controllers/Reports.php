@@ -1290,7 +1290,7 @@ class Reports extends Secure_Controller
      * @return string
      * @noinspection PhpUnused
      */
-    public function specific_customers(string $start_date, string $end_date, string $customer_id, string $sale_type, string $payment_type): string
+    public function specific_customers(string $start_date=null, string $end_date=null, string $customer_id=null, string $sale_type=null, string $payment_type=null): string
     {
         $this->clearCache();
 
@@ -1364,7 +1364,7 @@ class Reports extends Secure_Controller
             }
         }
 
-        $customer_info = $this->customer->get_info($customer_id);
+        $customer_info = $this->customer->get_info((int)$customer_id);
         $customer_name = !empty($customer_info->company_name)    // TODO: This variable is not used anywhere in the code. Should it be or can it be deleted?
             ? "[ $customer_info->company_name ]"
             : $customer_info->company_name;
