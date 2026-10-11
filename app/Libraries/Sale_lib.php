@@ -1296,6 +1296,9 @@ class Sale_lib
     public function delete_item(int $line): void
     {
         $items = $this->get_cart();
+		if (!isset($items[$line])) {
+			return;
+		}
         $item_type = $items[$line]['item_type'];
 
         if ($item_type == ITEM_TEMP) {
