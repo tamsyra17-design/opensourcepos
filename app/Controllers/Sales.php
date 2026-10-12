@@ -1,1975 +1,1759 @@
 <?php
+/**
+ * @var string $controller_name
+ * @var array $modes
+ * @var array $mode
+ * @var array $empty_tables
+ * @var array $selected_table
+ * @var array $stock_locations
+ * @var array $stock_location
+ * @var array $cart
+ * @var bool $items_module_allowed
+ * @var bool $change_price
+ * @var int $customer_id
+ * @var int $customer_discount_type
+ * @var float $customer_discount
+ * @var float $customer_total
+ * @var string $customer_required
+ * @var float|int $item_count
+ * @var float|int $total_units
+ * @var float $subtotal
+ * @var array $taxes
+ * @var float $total
+ * @var float $payments_total
+ * @var float $amount_due
+ * @var bool $payments_cover_total
+ * @var array $payment_options
+ * @var array $selected_payment_type
+ * @var bool $pos_mode
+ * @var array $payments
+ * @var string $mode_label
+ * @var string $comment
+ * @var bool $print_after_sale
+ * @var bool $email_receipt
+ * @var bool $price_work_orders
+ * @var string $invoice_number
+ * @var int $cash_mode
+ * @var float $non_cash_total
+ * @var float $cash_amount_due
+ * @var array $config
+ */
 
-namespace App\Controllers;
-
-use App\Libraries\Barcode_lib;
-use App\Libraries\Email_lib;
-use App\Libraries\Sale_lib;
-use App\Libraries\Tax_lib;
-use App\Libraries\Token_lib;
-use App\Models\Customer;
-use App\Models\Customer_rewards;
-use App\Models\Dinner_table;
 use App\Models\Employee;
-use App\Models\Giftcard;
-use App\Models\Inventory;
-use App\Models\Item;
-use App\Models\Item_kit;
-use App\Models\Sale;
-use App\Models\Stock_location;
-use App\Models\Tokens\Token_invoice_count;
-use App\Models\Tokens\Token_customer;
-use App\Models\Tokens\Token_invoice_sequence;
-use CodeIgniter\HTTP\ResponseInterface;
-use Config\Services;
-use Config\OSPOS;
-use ReflectionException;
-use stdClass;
 
-class Sales extends Secure_Controller
-{
-    protected $helpers = ['file'];
-    private Barcode_lib $barcode_lib;
-    private Email_lib $email_lib;
-    private Sale_lib $sale_lib;
-    private Tax_lib $tax_lib;
-    private Token_lib $token_lib;
-    private Customer $customer;
-    private Customer_rewards $customer_rewards;
-    private Dinner_table $dinner_table;
-    protected Employee $employee;
-    private Item $item;
-    private Item_kit $item_kit;
-    private Sale $sale;
-    private Stock_location $stock_location;
-    private array $config;
+helper('url');
+?>
 
-    public function __construct()
-    {
-        parent::__construct('sales');
+<?= view('partial/header') ?>
 
-        $this->session = session();
-        $this->barcode_lib = new Barcode_lib();
-        $this->email_lib = new Email_lib();
-        $this->sale_lib = new Sale_lib();
-        $this->tax_lib = new Tax_lib();
-        $this->token_lib = new Token_lib();
-        $this->config = config(OSPOS::class)->settings;
+<!-- ============================================
+     MODERN POS 2025 - Fully Auto-Adjustable
+     ============================================ -->
+<style>
+:root {
+    --pos-bg: #f4f6fa;
+    --pos-surface: #ffffff;
+    --pos-surface-2: #f8fafc;
+    --pos-border: #e2e8f0;
+    --pos-text: #1e293b;
+    --pos-text-muted: #64748b;
+    --pos-primary: #4f46e5;
+    --pos-primary-hover: #4338ca;
+    --pos-success: #10b981;
+    --pos-success-hover: #059669;
+    --pos-danger: #ef4444;
+    --pos-danger-hover: #dc2626;
+    --pos-warning: #f59e0b;
+    --pos-info: #0ea5e9;
+    --pos-radius: 12px;
+    --pos-radius-sm: 8px;
+    --pos-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --pos-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
+    --pos-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
 
-        $this->customer = model(Customer::class);
-        $this->sale = model(Sale::class);
-        $this->item = model(Item::class);
-        $this->item_kit = model(Item_kit::class);
-        $this->stock_location = model(Stock_location::class);
-        $this->customer_rewards = model(Customer_rewards::class);
-        $this->dinner_table = model(Dinner_table::class);
-        $this->employee = model(Employee::class);
+[data-theme="dark"] {
+    --pos-bg: #0f172a;
+    --pos-surface: #1e293b;
+    --pos-surface-2: #334155;
+    --pos-border: #334155;
+    --pos-text: #f1f5f9;
+    --pos-text-muted: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--pos-bg);
+    color: var(--pos-text);
+    font-family: var(--pos-font);
+    font-size: 14px;
+    margin: 0;
+    padding: 0;
+}
+
+/* ===== Layout Grid ===== */
+#register_wrapper {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 16px;
+    padding: 16px;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+#register_wrapper > div { min-width: 0; }
+
+@media (max-width: 1400px) {
+    #register_wrapper { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+@media (max-width: 1100px) {
+    #register_wrapper { grid-template-columns: 1fr; padding: 12px; }
+}
+
+/* ===== Panels ===== */
+.panel {
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
+    border-radius: var(--pos-radius);
+    box-shadow: var(--pos-shadow);
+    margin-bottom: 16px;
+    overflow: visible;
+}
+
+.panel-body { padding: 14px 18px; }
+
+/* ===== Top Bar Controls ===== */
+#mode_form .panel-body ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    width: 100%;
+}
+
+#mode_form .panel-body ul li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+#mode_form .panel-body ul li.pull-left,
+#mode_form .panel-body ul li.pull-right,
+#mode_form .panel-body ul li.first_li {
+    float: none !important;
+    margin: 0;
+}
+
+#mode_form .panel-body ul li.pull-right { margin-left: auto; }
+#mode_form .panel-body ul li.pull-right + li.pull-right { margin-left: 0; }
+
+#mode_form label {
+    font-weight: 600;
+    color: var(--pos-text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+#mode_form .bootstrap-select,
+#mode_form .selectpicker { min-width: 130px; }
+
+#mode_form .bootstrap-select > .dropdown-toggle {
+    border-radius: var(--pos-radius-sm) !important;
+    border: 1px solid var(--pos-border) !important;
+    background: var(--pos-surface-2) !important;
+    color: var(--pos-text) !important;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 7px 12px;
+    height: auto;
+}
+
+#mode_form .bootstrap-select > .dropdown-toggle:hover {
+    background: var(--pos-border) !important;
+}
+
+/* ===== Item Search Bar ===== */
+#add_item_form .panel-body ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px 12px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+#add_item_form .panel-body ul li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#add_item_form .panel-body ul li.pull-left,
+#add_item_form .panel-body ul li.pull-right,
+#add_item_form .panel-body ul li.first_li {
+    float: none !important;
+    margin: 0;
+}
+
+#add_item_form .panel-body ul li.pull-left:nth-child(2) {
+    flex: 1;
+    min-width: 200px;
+    flex-shrink: 1;
+}
+
+#add_item_form .panel-body ul li.pull-right { margin-left: auto; }
+
+#add_item_form label {
+    font-weight: 600;
+    color: var(--pos-text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+#item {
+    min-width: 0;
+    width: 100%;
+    font-size: 15px;
+    padding: 10px 14px;
+    border: 2px solid var(--pos-border);
+    border-radius: var(--pos-radius-sm);
+    transition: all 0.2s;
+    background: var(--pos-surface-2);
+    color: var(--pos-text);
+}
+
+#item:focus {
+    outline: none;
+    border-color: var(--pos-primary);
+    background: var(--pos-surface);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+/* ===== Buttons ===== */
+.btn {
+    border-radius: var(--pos-radius-sm);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 8px 14px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.btn-sm { padding: 7px 12px; font-size: 12px; }
+
+.btn-primary { background: var(--pos-primary); color: white; }
+.btn-primary:hover { background: var(--pos-primary-hover); color: white; }
+.btn-success { background: var(--pos-success); color: white; }
+.btn-success:hover { background: var(--pos-success-hover); color: white; }
+.btn-danger { background: var(--pos-danger); color: white; }
+.btn-danger:hover { background: var(--pos-danger-hover); color: white; }
+.btn-info { background: var(--pos-info); color: white; }
+.btn-info:hover { background: #0284c7; color: white; }
+.btn-default {
+    background: var(--pos-surface-2);
+    color: var(--pos-text);
+    border: 1px solid var(--pos-border);
+}
+.btn-default:hover { background: var(--pos-border); color: var(--pos-text); }
+
+/* ==========================================
+   SALES TABLE — FULLY AUTO-ADJUSTABLE
+   ========================================== */
+.sales_table_100 {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+#register {
+    font-size: 13px;
+    table-layout: auto;              /* ← KEY: browser auto-calculates widths */
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#register thead th,
+#register tbody td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--pos-border);
+    vertical-align: middle;
+    color: var(--pos-text);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Header */
+#register thead th {
+    background: var(--pos-surface-2);
+    color: var(--pos-text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--pos-border);
+    position: relative;
+    user-select: none;
+    white-space: nowrap;
+}
+
+/* ---- PER-COLUMN AUTO BEHAVIOR ---- */
+
+/* Col 1: Delete icon — shrink to content */
+#register td:nth-child(1),
+#register th:nth-child(1) {
+    width: 1%;
+    white-space: nowrap;
+    text-align: center;
+    padding: 8px 6px;
+}
+
+/* Col 2: Item Number — shrink to content, max 200px */
+#register td:nth-child(2),
+#register th:nth-child(2) {
+    width: 1%;
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Col 3: Item Name — FLEX, takes ALL remaining space */
+#register td:nth-child(3),
+#register th:nth-child(3) {
+    width: auto;
+    text-align: left;
+    line-height: 1.4;
+    min-width: 150px;
+}
+
+/* Col 4: Price — shrink to content */
+#register td:nth-child(4),
+#register th:nth-child(4) {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Col 5: Quantity — shrink to content */
+#register td:nth-child(5),
+#register th:nth-child(5) {
+    width: 1%;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* Col 6: Discount — needs input space */
+#register td:nth-child(6),
+#register th:nth-child(6) {
+    width: 1%;
+    min-width: 130px;
+    white-space: nowrap;
+}
+
+/* Col 7: Total — shrink to content */
+#register td:nth-child(7),
+#register th:nth-child(7) {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+    font-weight: 600;
+}
+
+/* Col 8: Update icon — shrink to content */
+#register td:nth-child(8),
+#register th:nth-child(8) {
+    width: 1%;
+    white-space: nowrap;
+    text-align: center;
+    padding: 8px 6px;
+}
+
+/* Row states */
+#register tbody tr { transition: background 0.15s; }
+#register tbody tr:hover { background: var(--pos-surface-2); }
+#register tbody tr:last-child td { border-bottom: none; }
+
+/* ---- Inputs inside cells ---- */
+#register td .form-control,
+#register td input[type="text"],
+#register td input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+/* Price input */
+#register td:nth-child(4) .form-control {
+    text-align: right;
+    max-width: 100px;
+    margin-left: auto;
+}
+
+/* Quantity input */
+#register td:nth-child(5) .form-control {
+    text-align: center;
+    max-width: 80px;
+    margin: 0 auto;
+}
+
+/* Discount input group */
+#register td:nth-child(6) .input-group {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+}
+
+#register td:nth-child(6) .input-group .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+    min-width: 0;
+    flex: 1;
+    padding: 6px;
+}
+
+#register td:nth-child(6) .input-group-btn {
+    display: flex;
+    flex-shrink: 0;
+}
+
+#register td:nth-child(6) .input-group-btn .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    padding: 6px 8px;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+/* Total input (amount entry mode) */
+#register td:nth-child(7) .form-control {
+    text-align: right;
+    max-width: 110px;
+    margin-left: auto;
+}
+
+/* Item name input (TEMP items) */
+#register td:nth-child(3) input { font-size: 12px; }
+
+/* Second row (description/serial) */
+#register tbody tr + tr td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+/* Empty cart state */
+#register tbody tr td[colspan="8"] {
+    padding: 0;
+    border: none;
+    width: 100%;
+}
+
+/* Column resizer handle (optional, user can drag) */
+.col-resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    user-select: none;
+    background: transparent;
+    z-index: 20;
+    transition: background 0.15s;
+}
+
+.col-resizer:hover {
+    background: var(--pos-primary);
+    opacity: 0.4;
+}
+
+/* ===== General Form Controls ===== */
+.form-control {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--pos-border);
+    border-radius: var(--pos-radius-sm);
+    font-size: 13px;
+    background: var(--pos-surface);
+    color: var(--pos-text);
+    transition: all 0.15s;
+    box-sizing: border-box;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--pos-primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-control.input-sm { padding: 6px 8px; font-size: 12px; height: auto; }
+
+/* ===== Overall Sale Panel ===== */
+#overall_sale {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    min-width: 0;
+    width: 100%;
+}
+
+#overall_sale > .panel-body {
+    background: var(--pos-surface);
+    border: 1px solid var(--pos-border);
+    border-radius: var(--pos-radius);
+    box-shadow: var(--pos-shadow-md);
+    padding: 20px;
+}
+
+#overall_sale::-webkit-scrollbar { width: 6px; }
+#overall_sale::-webkit-scrollbar-track { background: transparent; }
+#overall_sale::-webkit-scrollbar-thumb { background: var(--pos-border); border-radius: 3px; }
+
+/* ===== Totals Section ===== */
+#sale_totals, #payment_totals {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--pos-border);
+    width: 100%;
+}
+
+#sale_totals tr th, #payment_totals tr th {
+    padding: 6px 0;
+    font-weight: 500;
+    color: var(--pos-text-muted);
+    font-size: 13px;
+    text-align: left;
+}
+
+#sale_totals tr th:last-child, #payment_totals tr th:last-child {
+    color: var(--pos-text);
+    font-weight: 600;
+    text-align: right;
+}
+
+#sale_totals tr:last-child th {
+    font-size: 22px !important;
+    color: var(--pos-text) !important;
+    font-weight: 800 !important;
+    padding-top: 12px;
+    border-top: 2px solid var(--pos-border);
+}
+
+#sale_amount_due { color: var(--pos-danger); font-weight: 700; }
+
+/* ===== Payment Section ===== */
+#payment_details {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--pos-border);
+}
+
+#payment_details .sales_table_100 td {
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--pos-text-muted);
+}
+
+#payment_details .sales_table_100 td:last-child { text-align: right; }
+
+/* ===== Action Buttons ===== */
+#buttons_sale {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+#buttons_sale > div {
+    flex: 1;
+    justify-content: center;
+    min-width: 100px;
+    padding: 12px;
+    font-size: 13px;
+}
+
+#finish_sale_button, #finish_invoice_quote_button, #add_payment_button {
+    background: linear-gradient(135deg, var(--pos-success) 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    font-weight: 700;
+    padding: 14px 20px !important;
+    font-size: 14px !important;
+    cursor: pointer;
+}
+
+#finish_sale_button:hover, #finish_invoice_quote_button:hover, #add_payment_button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+#cancel_sale_button { background: var(--pos-danger); color: white; cursor: pointer; }
+#suspend_sale_button { background: var(--pos-warning); color: white; cursor: pointer; }
+
+/* ===== Customer Section ===== */
+#select_customer {
+    background: var(--pos-surface-2);
+    border-radius: var(--pos-radius-sm);
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px dashed var(--pos-border);
+}
+
+#select_customer label {
+    display: block;
+    margin-bottom: 8px !important;
+    font-weight: 600;
+    color: var(--pos-text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+#customer { margin-bottom: 10px; font-size: 14px; padding: 10px 12px; }
+
+/* ===== Alerts ===== */
+.alert {
+    border-radius: var(--pos-radius-sm);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.alert-info {
+    background: #e0f2fe;
+    color: #075985;
+    text-align: center;
+    padding: 40px 20px;
+    font-size: 15px;
+    border-radius: var(--pos-radius);
+}
+.alert-danger { background: #fee2e2; color: #991b1b; }
+.alert-warning { background: #fef3c7; color: #92400e; }
+.alert-success { background: #d1fae5; color: #065f46; }
+
+/* ===== Checkboxes ===== */
+.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--pos-text);
+    cursor: pointer;
+    font-weight: 500;
+    margin: 4px 0;
+}
+
+.checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--pos-primary);
+    cursor: pointer;
+}
+
+/* ===== Reference Code Row ===== */
+.reference-code-input-hidden { display: none; }
+
+/* ===== Theme Toggle Button ===== */
+.theme-toggle-btn {
+    background: var(--pos-surface-2);
+    border: 1px solid var(--pos-border);
+    color: var(--pos-text);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.theme-toggle-btn:hover { transform: rotate(180deg); background: var(--pos-border); }
+
+/* ===== Responsive ===== */
+@media (max-width: 1400px) {
+    #register td:nth-child(3),
+    #register th:nth-child(3) { min-width: 120px; }
+    #register td:nth-child(6),
+    #register th:nth-child(6) { min-width: 110px; }
+}
+
+@media (max-width: 1100px) {
+    #register_wrapper > div:first-child { overflow-x: auto; }
+    #register { min-width: 650px; }
+}
+
+@media (max-width: 768px) {
+    #register_wrapper { padding: 8px; gap: 12px; }
+    #overall_sale { position: static; max-height: none; }
+    #register { min-width: 0; }
+    #register thead { display: none; }
+    #register tbody tr {
+        display: block;
+        background: var(--pos-surface);
+        border: 1px solid var(--pos-border);
+        border-radius: var(--pos-radius-sm);
+        margin-bottom: 8px;
+        padding: 10px;
+    }
+    #register tbody td {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0 !important;
+        border: none;
+        text-align: left !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        white-space: normal !important;
+    }
+    #register tbody td:before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--pos-text-muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        margin-right: 8px;
+        flex-shrink: 0;
+    }
+    #register td:nth-child(4) .form-control,
+    #register td:nth-child(5) .form-control,
+    #register td:nth-child(7) .form-control {
+        max-width: 120px;
+    }
+    #buttons_sale > div { min-width: 100%; }
+    #mode_form .panel-body ul li.pull-right { margin-left: 0; }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--pos-bg); }
+::-webkit-scrollbar-thumb { background: var(--pos-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--pos-text-muted); }
+
+/* ===== Animation ===== */
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+#register tbody tr { animation: slideIn 0.2s ease-out; }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<!-- ============================================
+     Alerts
+     ============================================ -->
+<?php if (isset($error)): ?>
+    <div class="alert alert-danger" style="margin: 20px auto; max-width: 1600px;">
+        <strong>Error:</strong> <?= esc($error) ?>
+    </div>
+<?php endif; ?>
+
+<?php if (!empty($warning)): ?>
+    <div class="alert alert-warning" style="margin: 20px auto; max-width: 1600px;">
+        <strong>Warning:</strong> <?= esc($warning) ?>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($success)): ?>
+    <div class="alert alert-success" style="margin: 20px auto; max-width: 1600px;">
+        <strong>Success:</strong> <?= esc($success) ?>
+    </div>
+<?php endif; ?>
+
+<!-- ============================================
+     MAIN REGISTER WRAPPER
+     ============================================ -->
+<div id="register_wrapper">
+
+    <!-- ========== LEFT SIDE: Items ========== -->
+    <div>
+
+        <!-- Top register controls -->
+        <?= form_open("$controller_name/changeMode", ['id' => 'mode_form', 'class' => 'form-horizontal panel']) ?>
+            <div class="panel-body form-group">
+                <ul>
+                    <li class="pull-left first_li">
+                        <label class="control-label"><?= lang(ucfirst($controller_name) . '.mode') ?></label>
+                    </li>
+                    <li class="pull-left">
+                        <?= form_dropdown('mode', $modes, $mode, ['onchange' => "$('#mode_form').submit();", 'class' => 'selectpicker show-menu-arrow', 'data-style' => 'btn-default btn-sm', 'data-width' => 'fit']) ?>
+                    </li>
+
+                    <?php if ($config['dinner_table_enable']) { ?>
+                        <li class="pull-left first_li">
+                            <label class="control-label"><?= lang(ucfirst($controller_name) . '.table') ?></label>
+                        </li>
+                        <li class="pull-left">
+                            <?= form_dropdown('dinner_table', $empty_tables, $selected_table, ['onchange' => "$('#mode_form').submit();", 'class' => 'selectpicker show-menu-arrow', 'data-style' => 'btn-default btn-sm', 'data-width' => 'fit']) ?>
+                        </li>
+                    <?php } ?>
+
+                    <?php if (count($stock_locations) > 1) { ?>
+                        <li class="pull-left first_li">
+                            <label class="control-label"><?= lang(ucfirst($controller_name) . '.stock_location') ?></label>
+                        </li>
+                        <li class="pull-left">
+                            <?= form_dropdown('stock_location', $stock_locations, $stock_location, ['onchange' => "$('#mode_form').submit();", 'class' => 'selectpicker show-menu-arrow', 'data-style' => 'btn-default btn-sm', 'data-width' => 'fit']) ?>
+                        </li>
+                    <?php } ?>
+
+                    <li class="pull-right">
+                        <button class="btn btn-default btn-sm modal-dlg" id="show_suspended_sales_button" data-href="<?= esc("$controller_name/suspended") ?>"
+                            title="<?= lang(ucfirst($controller_name) . '.suspended_sales') ?>">
+                            <span class="glyphicon glyphicon-align-justify"></span>
+                            <?= lang(ucfirst($controller_name) . '.suspended_sales') ?>
+                        </button>
+                    </li>
+
+                    <?php
+                    $employee = model(Employee::class);
+                    if ($employee->has_grant('reports_sales', session('person_id'))) {
+                    ?>
+                        <li class="pull-right">
+                            <?= anchor(
+                                "$controller_name/manage",
+                                '<span class="glyphicon glyphicon-list-alt"></span>' . lang(ucfirst($controller_name) . '.takings'),
+                                array('class' => 'btn btn-primary btn-sm', 'id' => 'sales_takings_button', 'title' => lang(ucfirst($controller_name) . '.takings'))
+                            ) ?>
+                        </li>
+                    <?php } ?>
+
+                    <li class="pull-right">
+                        <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark Mode">
+                            <span class="glyphicon glyphicon-adjust"></span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        <?= form_close() ?>
+
+        <?php $tabindex = 0; ?>
+
+        <!-- Item Search -->
+        <?= form_open("$controller_name/add", ['id' => 'add_item_form', 'class' => 'form-horizontal panel']) ?>
+            <div class="panel-body form-group">
+                <ul>
+                    <li class="pull-left first_li">
+                        <label for="item" class="control-label"><?= lang(ucfirst($controller_name) . '.find_or_scan_item_or_receipt') ?></label>
+                    </li>
+                    <li class="pull-left">
+                        <?= form_input([
+                            'name' => 'item',
+                            'id' => 'item',
+                            'class' => 'form-control input-sm',
+                            'tabindex' => ++$tabindex,
+                            'placeholder' => '🔍 Scan barcode or type item name...'
+                        ]) ?>
+                        <span class="ui-helper-hidden-accessible" role="status"></span>
+                    </li>
+                    <li class="pull-right">
+                        <button id="new_item_button" class="btn btn-info btn-sm pull-right modal-dlg"
+                            data-btn-new="<?= lang('Common.new') ?>"
+                            data-btn-submit="<?= lang('Common.submit') ?>"
+                            data-href="<?= "items/view" ?>"
+                            title="<?= lang(ucfirst($controller_name) . ".new_item") ?>">
+                            <span class="glyphicon glyphicon-tag"></span>
+                            <?= lang(ucfirst($controller_name) . ".new_item") ?>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        <?= form_close() ?>
+
+        <!-- ========== Sale Items List ========== -->
+        <div class="panel">
+            <table class="sales_table_100" id="register">
+                <thead>
+                    <tr>
+                        <th><?= lang('Common.delete') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.item_number') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.item_name') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.price') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.quantity') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.discount') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.total') ?></th>
+                        <th><?= lang(ucfirst($controller_name) . '.update') ?></th>
+                    </tr>
+                </thead>
+
+                <tbody id="cart_contents">
+                    <?php if (count($cart) == 0) { ?>
+                        <tr>
+                            <td colspan="8">
+                                <div class="alert alert-info">
+                                    🛒 <?= lang(ucfirst($controller_name) . '.no_items_in_cart') ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php
+                    } else {
+                        foreach (array_reverse($cart, true) as $line => $item) {
+                    ?>
+                            <?= form_open("$controller_name/editItem/$line", ['class' => 'form-horizontal', 'id' => "cart_$line"]) ?>
+                                <tr>
+                                    <td data-label="<?= lang('Common.delete') ?>">
+                                        <?php
+                                        echo anchor("$controller_name/deleteItem/$line", '<span class="glyphicon glyphicon-trash"></span>');
+                                        echo form_hidden('location', (string)$item['item_location']);
+                                        echo form_input(['type' => 'hidden', 'name' => 'item_id', 'value' => $item['item_id']]);
+                                        ?>
+                                    </td>
+                                    <?php if ($item['item_type'] == ITEM_TEMP) { ?>
+                                        <td data-label="<?= lang(ucfirst($controller_name) . '.item_number') ?>"><?= form_input(['name' => 'item_number', 'id' => 'item_number', 'class' => 'form-control input-sm', 'value' => $item['item_number'], 'tabindex' => ++$tabindex]) ?></td>
+                                        <td data-label="<?= lang(ucfirst($controller_name) . '.item_name') ?>" style="text-align: center;">
+                                            <?= form_input(['name' => 'name', 'id' => 'name', 'class' => 'form-control input-sm', 'value' => $item['name'], 'tabindex' => ++$tabindex]) ?>
+                                        </td>
+                                    <?php } else { ?>
+                                        <td data-label="<?= lang(ucfirst($controller_name) . '.item_number') ?>"><?= esc($item['item_number']) ?></td>
+                                        <td data-label="<?= lang(ucfirst($controller_name) . '.item_name') ?>" style="text-align: left;">
+                                            <?= esc($item['name']) . ' ' . esc(implode(' ', [$item['attribute_values'], $item['attribute_dtvalues']])) ?>
+                                            <br>
+                                            <?php if ($item['stock_type'] == '0'): echo '[' . to_quantity_decimals($item['in_stock']) . ' in ' . esc($item['stock_name']) . ']';
+                                            endif; ?>
+                                        </td>
+                                    <?php } ?>
+
+                                    <td data-label="<?= lang(ucfirst($controller_name) . '.price') ?>">
+                                        <?php
+                                        if ($items_module_allowed && $change_price) {
+                                            echo form_input(['name' => 'price', 'class' => 'form-control input-sm', 'value' => to_currency_no_money($item['price']), 'tabindex' => ++$tabindex, 'onClick' => 'this.select();']);
+                                        } else {
+                                            echo to_currency($item['price']);
+                                            echo form_hidden('price', to_currency_no_money($item['price']));
+                                        }
+                                        ?>
+                                    </td>
+
+                                    <td data-label="<?= lang(ucfirst($controller_name) . '.quantity') ?>">
+                                        <?php
+                                        if ($item['is_serialized']) {
+                                            echo to_quantity_decimals($item['quantity']);
+                                            echo form_hidden('quantity', $item['quantity']);
+                                        } else {
+                                            echo form_input(['name' => 'quantity', 'class' => 'form-control input-sm', 'value' => to_quantity_decimals($item['quantity']), 'tabindex' => ++$tabindex, 'onClick' => 'this.select();']);
+                                        }
+                                        ?>
+                                    </td>
+
+                                    <td data-label="<?= lang(ucfirst($controller_name) . '.discount') ?>">
+                                        <div class="input-group">
+                                            <?= form_input(['name' => 'discount', 'class' => 'form-control input-sm', 'value' => $item['discount_type'] ? to_currency_no_money($item['discount']) : to_decimals($item['discount']), 'tabindex' => ++$tabindex, 'onClick' => 'this.select();']) ?>
+                                            <span class="input-group-btn">
+                                                <?= form_checkbox(['id' => 'discount_toggle', 'name' => 'discount_toggle', 'value' => 1, 'data-toggle' => "toggle", 'data-size' => 'small', 'data-onstyle' => 'success', 'data-on' => '<b>' . $config['currency_symbol'] . '</b>', 'data-off' => '<b>%</b>', 'data-line' => $line, 'checked' => $item['discount_type'] == 1]) ?>
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <td data-label="<?= lang(ucfirst($controller_name) . '.total') ?>">
+                                        <?php
+                                        if ($item['item_type'] == ITEM_AMOUNT_ENTRY) {
+                                            echo form_input(['name' => 'discounted_total', 'class' => 'form-control input-sm', 'value' => to_currency_no_money($item['discounted_total']), 'tabindex' => ++$tabindex, 'onClick' => 'this.select();']);
+                                        } else {
+                                            echo to_currency($item['discounted_total']);
+                                        }
+                                        ?>
+                                    </td>
+
+                                    <td data-label="<?= lang(ucfirst($controller_name) . '.update') ?>">
+                                        <a href="javascript:document.getElementById('<?= "cart_$line" ?>').submit();" title="<?= lang(ucfirst($controller_name) . '.update') ?>">
+                                            <span class="glyphicon glyphicon-refresh"></span>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <?php if ($item['item_type'] == ITEM_TEMP) { ?>
+                                        <td><?= form_input(['type' => 'hidden', 'name' => 'item_id', 'value' => $item['item_id']]) ?></td>
+                                        <td style="text-align: center;" colspan="6">
+                                            <?= form_input(['name' => 'item_description', 'id' => 'item_description', 'class' => 'form-control input-sm', 'value' => $item['description'], 'tabindex' => ++$tabindex]) ?>
+                                        </td>
+                                        <td> </td>
+                                    <?php } else { ?>
+                                        <td>&nbsp;</td>
+                                        <?php if ($item['allow_alt_description']) { ?>
+                                            <td style="color: var(--pos-text-muted);"><?= lang(ucfirst($controller_name) . '.description_abbrv') ?></td>
+                                        <?php } ?>
+
+                                        <td colspan="2" style="text-align: left;">
+                                            <?php
+                                            if ($item['allow_alt_description']) {
+                                                echo form_input(['name' => 'description', 'class' => 'form-control input-sm', 'value' => $item['description'], 'onClick' => 'this.select();']);
+                                            } else {
+                                                if ($item['description'] != '') {
+                                                    echo esc($item['description']);
+                                                    echo form_hidden('description', $item['description']);
+                                                } else {
+                                                    echo lang(ucfirst($controller_name) . '.no_description');
+                                                    echo form_hidden('description', '');
+                                                }
+                                            }
+                                            ?>
+                                        </td>
+                                        <td>&nbsp;</td>
+                                        <td style="color: var(--pos-text-muted);">
+                                            <?php
+                                            if ($item['is_serialized']) {
+                                                echo lang(ucfirst($controller_name) . '.serial');
+                                            }
+                                            ?>
+                                        </td>
+                                        <td colspan="4" style="text-align: left;">
+                                            <?php
+                                            if ($item['is_serialized']) {
+                                                echo form_input(['name' => 'serialnumber', 'class' => 'form-control input-sm', 'value' => $item['serialnumber'], 'onClick' => 'this.select();']);
+                                            } else {
+                                                echo form_hidden('serialnumber', '');
+                                            }
+                                            ?>
+                                        </td>
+                                    <?php } ?>
+                                </tr>
+                            <?= form_close() ?>
+                    <?php
+                        }
+                    }
+                    ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ========== RIGHT SIDE: Overall Sale ========== -->
+    <div id="overall_sale" class="panel">
+        <div class="panel-body">
+            <?= form_open("$controller_name/selectCustomer", ['id' => 'select_customer_form', 'class' => 'form-horizontal']) ?>
+                <?php if (isset($customer)) { ?>
+                    <table class="sales_table_100">
+                        <tr>
+                            <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer') ?></th>
+                            <th style="width: 45%; text-align: right;"><?= anchor("customers/view/$customer_id", esc($customer), ['class' => 'modal-dlg', 'data-btn-submit' => lang('Common.submit'), 'title' => lang('Customers.update')]) ?></th>
+                        </tr>
+                        <?php if (!empty($customer_email)) { ?>
+                            <tr>
+                                <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_email') ?></th>
+                                <th style="width: 45%; text-align: right;"><?= esc($customer_email) ?></th>
+                            </tr>
+                        <?php } ?>
+                        <?php if (!empty($customer_address)) { ?>
+                            <tr>
+                                <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_address') ?></th>
+                                <th style="width: 45%; text-align: right;"><?= esc($customer_address) ?></th>
+                            </tr>
+                        <?php } ?>
+                        <?php if (!empty($customer_location)) { ?>
+                            <tr>
+                                <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_location') ?></th>
+                                <th style="width: 45%; text-align: right;"><?= esc($customer_location) ?></th>
+                            </tr>
+                        <?php } ?>
+                        <tr>
+                            <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_discount') ?></th>
+                            <th style="width: 45%; text-align: right;"><?= ($customer_discount_type == FIXED) ? to_currency($customer_discount) : $customer_discount . '%' ?></th>
+                        </tr>
+                        <?php if ($config['customer_reward_enable']): ?>
+                            <?php if (!empty($customer_rewards)) { ?>
+                                <tr>
+                                    <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.rewards_package') ?></th>
+                                    <th style="width: 45%; text-align: right;"><?= esc($customer_rewards['package_name']) ?></th>
+                                </tr>
+                                <tr>
+                                    <th style="width: 55%;"><?= lang('Customers.available_points') ?></th>
+                                    <th style="width: 45%; text-align: right;"><?= esc($customer_rewards['points']) ?></th>
+                                </tr>
+                            <?php } ?>
+                        <?php endif; ?>
+                        <tr>
+                            <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_total') ?></th>
+                            <th style="width: 45%; text-align: right;"><?= to_currency($customer_total) ?></th>
+                        </tr>
+                        <?php if (!empty($mailchimp_info)) { ?>
+                            <tr>
+                                <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.customer_mailchimp_status') ?></th>
+                                <th style="width: 45%; text-align: right;"><?= esc($mailchimp_info['status']) ?></th>
+                            </tr>
+                        <?php } ?>
+                    </table>
+
+                    <?= anchor(
+                        "$controller_name/removeCustomer",
+                        '<span class="glyphicon glyphicon-remove"></span>' . lang('Common.remove') . ' ' . lang('Customers.customer'),
+                        ['class' => 'btn btn-danger btn-sm', 'id' => 'remove_customer_button', 'title' => lang('Common.remove') . ' ' . lang('Customers.customer')]
+                    )
+                    ?>
+                <?php } else { ?>
+                    <div class="form-group" id="select_customer">
+                        <label id="customer_label" for="customer" class="control-label">
+                            <?= lang(ucfirst($controller_name) . '.select_customer') . esc(" $customer_required") ?>
+                        </label>
+                        <?= form_input(['name' => 'customer', 'id' => 'customer', 'class' => 'form-control input-sm', 'value' => lang(ucfirst($controller_name) . '.start_typing_customer_name'), 'placeholder' => '👤 Customer name or phone...']) ?>
+
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <button class="btn btn-info btn-sm modal-dlg" data-btn-submit="<?= lang('Common.submit') ?>" data-href="<?= "customers/view" ?>" title="<?= lang(ucfirst($controller_name) . ".new_customer") ?>" style="flex:1;">
+                                <span class="glyphicon glyphicon-user"></span>
+                                <?= lang(ucfirst($controller_name) . ".new_customer") ?>
+                            </button>
+                            <button class="btn btn-default btn-sm modal-dlg" id="show_keyboard_help" data-href="<?= esc("$controller_name/salesKeyboardHelp") ?>" title="<?= lang(ucfirst($controller_name) . '.key_title') ?>">
+                                <span class="glyphicon glyphicon-share-alt"></span>
+                            </button>
+                        </div>
+                    </div>
+                <?php } ?>
+            <?= form_close() ?>
+
+            <!-- Sale Totals -->
+            <table class="sales_table_100" id="sale_totals">
+                <tr>
+                    <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.quantity_of_items', [$item_count]) ?></th>
+                    <th style="width: 45%; text-align: right;"><?= $total_units ?></th>
+                </tr>
+                <tr>
+                    <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.sub_total') ?></th>
+                    <th style="width: 45%; text-align: right;"><?= to_currency($subtotal) ?></th>
+                </tr>
+                <?php foreach ($taxes as $tax_group_index => $tax) { ?>
+                    <tr>
+                        <th style="width: 55%;"><?= (float)$tax['tax_rate'] . '% ' . esc($tax['tax_group']) ?></th>
+                        <th style="width: 45%; text-align: right;"><?= to_currency_tax($tax['sale_tax_amount']) ?></th>
+                    </tr>
+                <?php } ?>
+                <tr>
+                    <th style="width: 55%; font-size: 150%"><?= lang(ucfirst($controller_name) . '.total') ?></th>
+                    <th style="width: 45%; font-size: 150%; text-align: right;"><span id="sale_total"><?= to_currency($total) ?></span></th>
+                </tr>
+            </table>
+
+            <?php if (count($cart) > 0) { ?>
+                <!-- Payment Totals -->
+                <table class="sales_table_100" id="payment_totals">
+                    <tr>
+                        <th style="width: 55%;"><?= lang(ucfirst($controller_name) . '.payments_total') ?></th>
+                        <th style="width: 45%; text-align: right;"><?= to_currency($payments_total) ?></th>
+                    </tr>
+                    <tr>
+                        <th style="width: 55%; font-size: 120%"><?= lang(ucfirst($controller_name) . '.amount_due') ?></th>
+                        <th style="width: 45%; font-size: 120%; text-align: right;"><span id="sale_amount_due"><?= to_currency($amount_due) ?></span></th>
+                    </tr>
+                </table>
+
+                <div id="payment_details">
+                    <?php if ($payments_cover_total) { ?>
+                        <?= form_open("$controller_name/addPayment", ['id' => 'add_payment_form', 'class' => 'form-horizontal']) ?>
+                            <input type="hidden" name="complete_after_payment" value="0">
+                            <table class="sales_table_100">
+                                <tr>
+                                    <td><?= lang(ucfirst($controller_name) . '.payment') ?></td>
+                                    <td>
+                                        <?= form_dropdown('payment_type', $payment_options, $selected_payment_type, ['id' => 'payment_types', 'class' => 'selectpicker show-menu-arrow', 'data-style' => 'btn-default btn-sm', 'data-width' => '100%', 'disabled' => 'disabled']) ?>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><span id="amount_tendered_label"><?= lang(ucfirst($controller_name) . '.amount_tendered') ?></span></td>
+                                    <td>
+                                        <?= form_input([
+                                            'name' => 'amount_tendered',
+                                            'id' => 'amount_tendered',
+                                            'class' => 'form-control input-sm disabled',
+                                            'disabled' => 'disabled',
+                                            'value' => '0',
+                                            'size' => '5',
+                                            'tabindex' => ++$tabindex,
+                                            'onClick' => 'this.select();'
+                                        ]) ?>
+                                    </td>
+                                </tr>
+                                <tr class="reference-code-input reference-code-input-hidden">
+                                    <td style="padding-top: 8px;"><span id='reference_code_label'><?= lang('Sales.reference_code') ?></span></td>
+                                    <td style="padding-top: 8px;">
+                                        <?php echo form_input(array(
+                                            'name'      => 'reference_code',
+                                            'id'        => 'reference_code',
+                                            'class'     => 'form-control input-sm non-giftcard-input',
+                                            'disabled'  => true,
+                                            'value'     => '',
+                                            'size'      => 5,
+                                            'tabindex'  => ++$tabindex,
+                                            'onClick'   => 'this.select();'
+                                        ));
+                                        ?>
+                                    </td>
+                                </tr>
+                            </table>
+                        <?= form_close() ?>
+
+                        <?php
+                        if ($pos_mode) {
+                            $due_payment = false;
+
+                            if (count($payments) > 0) {
+                                foreach ($payments as $payment_id => $payment) {
+                                    if ($payment['payment_type'] == lang(ucfirst($controller_name) . '.due')) {
+                                        $due_payment = true;
+                                    }
+                                }
+                            }
+
+                            if (!$due_payment || ($due_payment && isset($customer))) {
+                        ?>
+                                <div class="btn btn-sm btn-success pull-right" id="finish_sale_button" tabindex="<?= ++$tabindex ?>">
+                                    <span class="glyphicon glyphicon-ok-circle"></span>
+                                    <?= lang(ucfirst($controller_name) . '.complete_sale') ?>
+                                </div>
+                        <?php
+                            }
+                        }
+                        ?>
+                    <?php } else { ?>
+                        <?= form_open("$controller_name/addPayment", ['id' => 'add_payment_form', 'class' => 'form-horizontal']) ?>
+                            <input type="hidden" name="complete_after_payment" value="0">
+                            <table class="sales_table_100">
+                                <tr>
+                                    <td><?= lang(ucfirst($controller_name) . '.payment') ?></td>
+                                    <td>
+                                        <?= form_dropdown('payment_type', $payment_options, $selected_payment_type, ['id' => 'payment_types', 'class' => 'selectpicker show-menu-arrow', 'data-style' => 'btn-default btn-sm', 'data-width' => '100%']) ?>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><span id="amount_tendered_label"><?= lang(ucfirst($controller_name) . '.amount_tendered') ?></span></td>
+                                    <td>
+                                        <?= form_input(['name' => 'amount_tendered', 'id' => 'amount_tendered', 'class' => 'form-control input-sm non-giftcard-input', 'value' => to_currency_no_money($amount_due), 'size' => '5', 'tabindex' => ++$tabindex, 'onClick' => 'this.select();']) ?>
+                                        <?= form_input(['name' => 'amount_tendered', 'id' => 'amount_tendered', 'class' => 'form-control input-sm giftcard-input', 'disabled' => true, 'value' => to_currency_no_money($amount_due), 'size' => '5', 'tabindex' => ++$tabindex]) ?>
+                                    </td>
+                                </tr>
+                                <tr class="reference-code-input reference-code-input-hidden">
+                                    <td style="padding-top: 8px;"><span id='reference_code_label'><?= lang('Sales.reference_code') ?></span></td>
+                                    <td style="padding-top: 8px;">
+                                        <?php echo form_input(array(
+                                            'name'      => 'reference_code',
+                                            'id'        => 'reference_code',
+                                            'class'     => 'form-control input-sm non-giftcard-input',
+                                            'disabled'  => true,
+                                            'value'     => '',
+                                            'size'      => 5,
+                                            'tabindex'  => ++$tabindex,
+                                            'onClick'   => 'this.select();'
+                                        ));
+                                        ?>
+                                    </td>
+                                </tr>
+                            </table>
+                        <?= form_close() ?>
+
+                        <div class="btn btn-sm btn-success pull-right" id="add_payment_button" tabindex="<?= ++$tabindex ?>">
+                            <span class="glyphicon glyphicon-credit-card"></span>
+                            <?= lang(ucfirst($controller_name) . '.add_payment') ?>
+                        </div>
+                    <?php } ?>
+
+                    <?php if (count($payments) > 0) { ?>
+                        <table class="sales_table_100" id="register_payments" style="margin-top:16px;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 10%;"><?= lang('Common.delete') ?></th>
+                                    <th style="width: 60%;"><?= lang(ucfirst($controller_name) . '.payment_type') ?></th>
+                                    <th style="width: 20%;"><?= lang(ucfirst($controller_name) . '.payment_amount') ?></th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="payment_contents">
+                                <?php foreach ($payments as $payment_id => $payment) { ?>
+                                    <tr>
+                                        <td><?= anchor("$controller_name/deletePayment/" . esc(base64url_encode($payment_id), 'url'), '<span class="glyphicon glyphicon-trash"></span>') ?></td>
+                                        <td><?= $payment['payment_type'] ?></td>
+                                        <td style="text-align: right;"><?= to_currency($payment['payment_amount']) ?></td>
+                                    </tr>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    <?php } ?>
+                </div>
+
+                <!-- Action Buttons -->
+                <?= form_open("$controller_name/cancel", ['id' => 'buttons_form']) ?>
+                <div class="form-group" id="buttons_sale">
+                    <div class="btn btn-sm btn-default" id="suspend_sale_button">
+                        <span class="glyphicon glyphicon-align-justify"></span>
+                        <?= lang(ucfirst($controller_name) . '.suspend_sale') ?>
+                    </div>
+                    <?php if (!$pos_mode && isset($customer)) { ?>
+                        <div class="btn btn-sm btn-success" id="finish_invoice_quote_button">
+                            <span class="glyphicon glyphicon-ok"></span>
+                            <?= esc($mode_label) ?>
+                        </div>
+                    <?php } ?>
+
+                    <div class="btn btn-sm btn-danger" id="cancel_sale_button">
+                        <span class="glyphicon glyphicon-remove"></span>
+                        <?= lang(ucfirst($controller_name) . '.cancel_sale') ?>
+                    </div>
+                </div>
+                <?= form_close() ?>
+
+                <?php if ($payments_cover_total || !$pos_mode) { ?>
+                    <div class="container-fluid" style="padding:0; margin-top:16px;">
+                        <div class="no-gutter row">
+                            <div class="form-group form-group-sm">
+                                <div class="col-xs-12">
+                                    <?= form_label(lang('Common.comments'), 'comments', ['class' => 'control-label', 'id' => 'comment_label', 'for' => 'comment']) ?>
+                                    <?= form_textarea(['name' => 'comment', 'id' => 'comment', 'class' => 'form-control input-sm', 'value' => $comment, 'rows' => '2', 'placeholder' => 'Optional note...']) ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group form-group-sm">
+                                <div class="col-xs-6">
+                                    <label for="sales_print_after_sale" class="control-label checkbox">
+                                        <?= form_checkbox(['name' => 'sales_print_after_sale', 'id' => 'sales_print_after_sale', 'value' => 1, 'checked' => $print_after_sale]) ?>
+                                        <?= lang(ucfirst($controller_name) . '.print_after_sale') ?>
+                                    </label>
+                                </div>
+
+                                <?php if (!empty($customer_email)) { ?>
+                                    <div class="col-xs-6">
+                                        <label for="email_receipt" class="control-label checkbox">
+                                            <?= form_checkbox(['name' => 'email_receipt', 'id' => 'email_receipt', 'value' => 1, 'checked' => $email_receipt]) ?>
+                                            <?= lang(ucfirst($controller_name) . '.email_receipt') ?>
+                                        </label>
+                                    </div>
+                                <?php } ?>
+                                <?php if ($mode == 'sale_work_order') { ?>
+                                    <div class="col-xs-6">
+                                        <label for="price_work_orders" class="control-label checkbox">
+                                            <?= form_checkbox(['name' => 'price_work_orders', 'id' => 'price_work_orders', 'value' => 1, 'checked' => $price_work_orders]) ?>
+                                            <?= lang(ucfirst($controller_name) . '.include_prices') ?>
+                                        </label>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        </div>
+                        <?php if (($mode == 'sale_invoice') && $config['invoice_enable']) { ?>
+                            <div class="row">
+                                <div class="form-group form-group-sm">
+                                    <div class="col-xs-6">
+                                        <label for="sales_invoice_number" class="control-label checkbox">
+                                            <?= lang(ucfirst($controller_name) . '.invoice_enable') ?>
+                                        </label>
+                                    </div>
+
+                                    <div class="col-xs-6">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-addon input-sm">#</span>
+                                            <?= form_input(['name' => 'sales_invoice_number', 'id' => 'sales_invoice_number', 'class' => 'form-control input-sm', 'value' => $invoice_number]) ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php } ?>
+                    </div>
+                <?php } ?>
+            <?php } ?>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================
+     JavaScript
+     ============================================ -->
+<script type="text/javascript">
+    // ========== Theme Toggle ==========
+    function initTheme() {
+        const saved = localStorage.getItem('pos-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
     }
 
-    public function getIndex(): ResponseInterface|string
-    {
-        $this->session->set('allow_temp_items', 1);
-        return $this->reload();
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('pos-theme', next);
     }
 
-    /**
-     * Load the sale edit modal. Used in app/Views/sales/register.php.
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function getManage(): ResponseInterface|string
-    {
-        $personId = $this->session->get('person_id');
+    initTheme();
 
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return redirect()->to('no_access/sales/reports_sales');
-        } else {
-            $data['table_headers'] = get_sales_manage_table_headers();
+    // ========== Keyboard Shortcuts ==========
+    const keyboardShortcuts = <?= json_encode($keyboardShortcuts ?? []) ?>;
+    const paymentsCoverTotal = <?= json_encode((bool) $payments_cover_total) ?>;
+    const referenceCodePaymentTypes = <?= json_encode($reference_code_payment_types ?? []) ?>;
+    const shortcutCodes = {
+        items: keyboardShortcuts?.items?.code ?? null,
+        customers: keyboardShortcuts?.customers?.code ?? null,
+        suspend: keyboardShortcuts?.suspend?.code ?? null,
+        suspended: keyboardShortcuts?.suspended?.code ?? null,
+        amount: keyboardShortcuts?.amount?.code ?? null,
+        payment: keyboardShortcuts?.payment?.code ?? null,
+        complete: keyboardShortcuts?.complete?.code ?? null,
+        finish: keyboardShortcuts?.finish?.code ?? null,
+        help: keyboardShortcuts?.help?.code ?? null,
+        cancel: keyboardShortcuts?.cancel?.code ?? null
+    };
 
-            $data['filters'] = [
-                'only_cash'         => lang('Sales.cash_filter'),
-                'only_due'          => lang('Sales.due_filter'),
-                'only_check'        => lang('Sales.check_filter'),
-                'only_creditcard'   => lang('Sales.credit_filter'),
-                'only_debit'        => lang('Sales.debit'),
-                'only_bank_transfer'=> lang('Sales.bank_transfer'),
-                'only_wallet'       => lang('Sales.wallet'),
-                'only_invoices'     => lang('Sales.invoice_filter'),
-                'selected_customer' => lang('Sales.selected_customer')
-            ];
-
-            if ($this->sale_lib->get_customer() != -1) {
-                $selectedFilters = ['selected_customer'];
-                $data['customer_selected'] = true;
-            } else {
-                $data['customer_selected'] = false;
-                $selectedFilters = [];
-            }
-
-            // Restore filters from URL query string
-            $filters = restoreTableFilters($this->request);
-            if (!empty($filters['selected_filters'])) {
-                $selectedFilters = array_merge($selectedFilters, $filters['selected_filters']);
-            }
-            if (isset($filters['start_date'])) {
-                $data['start_date'] = $filters['start_date'];
-            }
-            if (isset($filters['end_date'])) {
-                $data['end_date'] = $filters['end_date'];
-            }
-            $data['selected_filters'] = $selectedFilters;
-
-            return view('sales/manage', $data);
-        }
-    }
-
-    /**
-     * @param int $rowId
-     * @return ResponseInterface
-     */
-    public function getRow(int $rowId): ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        }
-
-        $saleInfo = $this->sale->get_info($rowId)->getRow();
-        $dataRow = getSaleDataRow($saleInfo);
-
-        return $this->response->setJSON($dataRow);
-    }
-
-    /**
-     * @return ResponseInterface
-     */
-    public function getSearch(): ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        }
-
-        $search = $this->request->getGet('search', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $limit = $this->request->getGet('limit', FILTER_SANITIZE_NUMBER_INT);
-        $offset = $this->request->getGet('offset', FILTER_SANITIZE_NUMBER_INT);
-        $sort = $this->sanitizeSortColumn(salesHeaders(), $this->request->getGet('sort', FILTER_SANITIZE_FULL_SPECIAL_CHARS), 'sale_id');
-        $order = $this->request->getGet('order', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-
-        $filters = [
-            'sale_type'         => 'all',
-            'location_id'       => 'all',
-            'start_date'        => $this->request->getGet('start_date', FILTER_SANITIZE_FULL_SPECIAL_CHARS),
-            'end_date'          => $this->request->getGet('end_date', FILTER_SANITIZE_FULL_SPECIAL_CHARS),
-            'only_cash'         => false,
-            'only_due'          => false,
-            'only_check'        => false,
-            'selected_customer' => false,
-            'only_creditcard'   => false,
-            'only_debit'        => false,
-            'only_bank_transfer'=> false,
-            'only_wallet'       => false,
-            'only_invoices'     => $this->config['invoice_enable'] && $this->request->getGet('only_invoices', FILTER_SANITIZE_NUMBER_INT),
-            'is_valid_receipt'  => $this->sale->isValidReceipt($search)
-        ];
-
-        // Check if any filter is set in the multiselect dropdown
-        $requestFilters = array_fill_keys($this->request->getGet('filters', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? [], true);
-        $filters = array_merge($filters, $requestFilters);
-
-        $sales = $this->sale->search($search, $filters, $limit, $offset, $sort, $order);
-        $totalRows = $this->sale->get_found_rows($search, $filters);
-        $payments = $this->sale->getPaymentsSummary($search, $filters);
-        $paymentSummary = getSalesManagePaymentsSummary($payments);
-
-        $dataRows = [];
-        foreach ($sales->getResult() as $sale) {
-            $dataRows[] = getSaleDataRow($sale);
-        }
-
-        if ($totalRows > 0) {
-            $dataRows[] = getSaleDataLastRow($sales);
-        }
-
-        return $this->response->setJSON(['total' => $totalRows, 'rows' => $dataRows, 'payment_summary' => $paymentSummary]);
-    }
-
-    /**
-     * Gets search suggestions for an item or item kit. Used in app/Views/sales/register.php.
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getItemSearch(): ResponseInterface
-    {
-        $suggestions = [];
-        $receipt = $search = $this->request->getGet('term') != ''
-            ? $this->request->getGet('term')
-            : null;
-
-        if ($this->sale_lib->get_mode() == 'return' && $this->sale->isValidReceipt($receipt)) {
-            // If a valid receipt or invoice was found the search term will be replaced with a receipt number (POS #)
-            $suggestions[] = $receipt;
-        }
-        $suggestions = array_merge($suggestions, $this->item->get_search_suggestions($search, ['search_custom' => false, 'is_deleted' => false], true));
-        $suggestions = array_merge($suggestions, $this->item_kit->get_search_suggestions($search));
-
-        return $this->response->setJSON($suggestions);
-    }
-
-    /**
-     * @return ResponseInterface
-     */
-    public function suggest_search(): ResponseInterface
-    {
-        $search = $this->request->getPost('term') != ''
-            ? $this->request->getPost('term')
-            : null;
-
-        $suggestions = $this->sale->get_search_suggestions($search);
-
-        return $this->response->setJSON($suggestions);
-    }
-
-    /**
-     * Set a given customer. Used in app/Views/sales/register.php.
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postSelectCustomer(): ResponseInterface|string
-    {
-        $customer_id = (int)$this->request->getPost('customer', FILTER_SANITIZE_NUMBER_INT);
-        if ($this->customer->exists($customer_id)) {
-            $this->sale_lib->set_customer($customer_id);
-            $discount = $this->customer->get_info($customer_id)->discount;
-            $discount_type = $this->customer->get_info($customer_id)->discount_type;
-
-            // Apply customer default discount to items that have 0 discount
-            if ($discount != '') {
-                $this->sale_lib->apply_customer_discount($discount, $discount_type);
-            }
-        }
-
-        return $this->reload();
-    }
-
-    /**
-     * Changes the sale mode in the register to carry out different types of sales
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postChangeMode(): ResponseInterface|string
-    {
-        $mode = $this->request->getPost('mode', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $this->sale_lib->set_mode($mode);
-
-        if ($mode == 'sale') {
-            $this->sale_lib->set_sale_type(SALE_TYPE_POS);
-        } elseif ($mode == 'sale_quote') {
-            $this->sale_lib->set_sale_type(SALE_TYPE_QUOTE);
-        } elseif ($mode == 'sale_work_order') {
-            $this->sale_lib->set_sale_type(SALE_TYPE_WORK_ORDER);
-        } elseif ($mode == 'sale_invoice') {
-            $this->sale_lib->set_sale_type(SALE_TYPE_INVOICE);
-        } else {
-            $this->sale_lib->set_sale_type(SALE_TYPE_RETURN);
-        }
-
-        if ($this->config['dinner_table_enable']) {
-            $occupied_dinner_table = $this->request->getPost('dinner_table', FILTER_SANITIZE_NUMBER_INT);
-            $released_dinner_table = $this->sale_lib->get_dinner_table();
-            $occupied = $this->dinner_table->is_occupied($released_dinner_table);
-
-            if ($occupied && ($occupied_dinner_table != $released_dinner_table)) {
-                $this->dinner_table->swap_tables($released_dinner_table, $occupied_dinner_table);
-            }
-
-            $this->sale_lib->set_dinner_table($occupied_dinner_table);
-        }
-
-        $stock_location = $this->request->getPost('stock_location', FILTER_SANITIZE_NUMBER_INT);
-
-        if (!$stock_location || $stock_location == $this->sale_lib->get_sale_location()) {
-            // TODO: The code below was removed in 2017 by @steveireland. We either need to reinstate some of it or remove this entire if block but we can't leave an empty if block
-            //            $dinner_table = $this->request->getPost('dinner_table');
-            //            $this->sale_lib->set_dinner_table($dinner_table);
-        } elseif ($this->stock_location->is_allowed_location($stock_location, 'sales')) {
-            $this->sale_lib->set_sale_location($stock_location);
-        }
-
-        $this->sale_lib->empty_payments();
-
-        return $this->reload();
-    }
-
-    /**
-     * @param int $sale_type
-     * @return ResponseInterface|string
-     */
-    public function change_register_mode(int $sale_type): ResponseInterface|string
-    {
-        $mode = match ($sale_type) {
-            SALE_TYPE_QUOTE => 'sale_quote',
-            SALE_TYPE_WORK_ORDER => 'sale_work_order',
-            SALE_TYPE_INVOICE => 'sale_invoice',
-            SALE_TYPE_RETURN => 'return',
-            default => 'sale' // SALE_TYPE_POS
+    $(document).ready(function() {
+        const redirect = function() {
+            window.location.href = "<?= site_url('sales'); ?>";
         };
 
-        $this->sale_lib->set_mode($mode);
-        return $this->reload();
-    }
+        $("#remove_customer_button").click(function() {
+            $.post("<?= site_url('sales/removeCustomer'); ?>", redirect);
+        });
 
+        $(".delete_item_button").click(function() {
+            const item_id = $(this).data('item-id');
+            $.post("<?= site_url('sales/deleteItem/'); ?>" + item_id, redirect);
+        });
 
-    /**
-     * Sets the sales comment. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postSetComment(): ResponseInterface
-    {
-        $this->sale_lib->set_comment($this->request->getPost('comment', FILTER_SANITIZE_FULL_SPECIAL_CHARS));
-        return $this->response->setJSON(['success' => true]);
-    }
+        $(".delete_payment_button").click(function() {
+            const item_id = $(this).data('payment-id');
+            $.post("<?= site_url('sales/deletePayment/'); ?>" + item_id, redirect);
+        });
 
-    /**
-     * Sets the invoice number. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postSetInvoiceNumber(): ResponseInterface|string
-    {
-        $this->sale_lib->set_invoice_number($this->request->getPost('sales_invoice_number', FILTER_SANITIZE_NUMBER_INT));
-        return $this->response->setJSON(['success' => true]);
-    }
+        $("input[name='item_number']").change(function() {
+            const item_id = $(this).parents('tr').find("input[name='item_id']").val();
+            const item_number = $(this).val();
+            $.ajax({
+                url: "<?= site_url('sales/changeItemNumber') ?>",
+                method: 'post',
+                data: { 'item_id': item_id, 'item_number': item_number },
+                dataType: 'json'
+            });
+        });
 
-    /**
-     * @return ResponseInterface
-     */
-    public function postSetPaymentType(): ResponseInterface|string    // TODO: This function does not appear to be called anywhere in the code.
-    {
-        $this->sale_lib->set_payment_type($this->request->getPost('selected_payment_type', FILTER_SANITIZE_FULL_SPECIAL_CHARS));
-        return $this->reload();
-    }
+        $("input[name='name']").change(function() {
+            const item_id = $(this).parents('tr').find("input[name='item_id']").val();
+            const item_name = $(this).val();
+            $.ajax({
+                url: "<?= site_url('sales/changeItemName') ?>",
+                method: 'post',
+                data: { 'item_id': item_id, 'item_name': item_name },
+                dataType: 'json'
+            });
+        });
 
-    /**
-     * Sets PrintAfterSale flag. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postSetPrintAfterSale(): ResponseInterface
-    {
-        $this->sale_lib->set_print_after_sale($this->request->getPost('sales_print_after_sale') != 'false');
-        return $this->response->setJSON(['success' => true]);
-    }
+        $("input[name='item_description']").change(function() {
+            const item_id = $(this).parents('tr').find("input[name='item_id']").val();
+            const item_description = $(this).val();
+            $.ajax({
+                url: "<?= site_url('sales/changeItemDescription') ?>",
+                method: 'post',
+                data: { 'item_id': item_id, 'item_description': item_description },
+                dataType: 'json'
+            });
+        });
 
-    /**
-     * Sets the flag to include prices in the work order. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postSetPriceWorkOrders(): ResponseInterface
-    {
-        $price_work_orders = parse_decimals($this->request->getPost('price_work_orders'));
-        $this->sale_lib->set_price_work_orders($price_work_orders);
-        return $this->response->setJSON(['success' => true]);
-    }
+        $('#item').focus();
 
-    /**
-     * Sets the flag to email receipt to the customer. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postSetEmailReceipt(): ResponseInterface
-    {
-        $this->sale_lib->set_email_receipt($this->request->getPost('email_receipt', FILTER_SANITIZE_FULL_SPECIAL_CHARS));
-        return $this->response->setJSON(['success' => true]);
-    }
+        $('#item').blur(function() {
+            $(this).val("<?= lang(ucfirst($controller_name) . '.start_typing_item_name') ?>");
+        });
 
-    /**
-     * Add a payment to the sale. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postAddPayment(): ResponseInterface|string
-    {
-        $data = [];
-        $giftcard = model(Giftcard::class);
-        $paymentType = $this->request->getPost('payment_type', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+        $('#item').autocomplete({
+            source: "<?= esc("$controller_name/itemSearch") ?>",
+            minChars: 0,
+            autoFocus: false,
+            delay: 500,
+            select: function(a, ui) {
+                $(this).val(ui.item.value);
+                $('#add_item_form').submit();
+                return false;
+            }
+        });
 
-        if (!is_string($paymentType) || $paymentType === '') {
-            $data['error'] = lang('Sales.must_enter_numeric');
+        $('#item').keypress(function(e) {
+            if (e.which == 13) {
+                $('#add_item_form').submit();
+                return false;
+            }
+        });
 
-            return $this->reload($data);
-        }
+        const clear_fields = function() {
+            if ($(this).val().match("<?= lang(ucfirst($controller_name) . '.start_typing_item_name') . '|' . lang(ucfirst($controller_name) . '.start_typing_customer_name') ?>")) {
+                $(this).val('');
+            }
+        };
 
-        if (
-            $paymentType !== lang('Sales.giftcard')
-            && $paymentType !== lang('Sales.rewards')
-            && (str_contains($paymentType, lang('Sales.giftcard')) || str_contains($paymentType, lang('Sales.rewards')))
-        ) {
-            $data['error'] = lang('Sales.must_enter_numeric');
+        $('#item, #customer').click(clear_fields).dblclick(function(event) {
+            $(this).autocomplete('search');
+        });
 
-            return $this->reload($data);
-        }
+        $('#customer').blur(function() {
+            $(this).val("<?= lang(ucfirst($controller_name) . '.start_typing_customer_name') ?>");
+        });
 
-        $isReturnMode = $this->sale_lib->get_mode() === 'return';
-        $amountTenderedRule = $isReturnMode ? 'trim|required|decimal_locale' : 'trim|required|decimal_locale|nonNegativeDecimal';
+        $('#customer').autocomplete({
+            source: "<?= site_url('customers/suggest') ?>",
+            minChars: 0,
+            delay: 10,
+            select: function(a, ui) {
+                $(this).val(ui.item.value);
+                $('#select_customer_form').submit();
+                return false;
+            }
+        });
 
-        if ($paymentType === lang('Sales.giftcard')) {
-            $rules    = ['amount_tendered' => 'trim|required|integer'];
-            $messages = ['amount_tendered' => lang('Sales.must_enter_numeric_giftcard')];
-        } elseif (in_array($paymentType, get_reference_code_payment_types())) {
-            $min      = (int)($this->config['payment_reference_code_min'] ?? 3);
-            $max      = (int)($this->config['payment_reference_code_max'] ?? 20);
-            $rules    = [
-                'amount_tendered' => $amountTenderedRule,
-                'reference_code'  => "trim|required|alpha_numeric|min_length[$min]|max_length[$max]",
-            ];
-            $messages = [
-                'amount_tendered' => [
-                    'required'           => lang('Sales.must_enter_numeric'),
-                    'decimal_locale'     => lang('Sales.must_enter_numeric'),
-                    'nonNegativeDecimal' => lang('Sales.negative_amount_tendered'),
-                ],
-                'reference_code'  => [
-                    'required'      => lang('Sales.must_enter_reference_code'),
-                    'alpha_numeric' => lang('Sales.reference_code_invalid_characters'),
-                    'min_length'    => lang('Sales.reference_code_length_error'),
-                    'max_length'    => lang('Sales.reference_code_length_error'),
-                ],
-            ];
-        } else {
-            $rules    = ['amount_tendered' => $amountTenderedRule];
-            $messages = [
-                'amount_tendered' => [
-                    'required'           => lang('Sales.must_enter_numeric'),
-                    'decimal_locale'     => lang('Sales.must_enter_numeric'),
-                    'nonNegativeDecimal' => lang('Sales.negative_amount_tendered'),
-                ],
-            ];
-        }
+        $('#customer').keypress(function(e) {
+            if (e.which == 13) {
+                $('#select_customer_form').submit();
+                return false;
+            }
+        });
 
-        if (!$this->validate($rules, $messages)) {
-            $errors = $this->validator->getErrors();
-            $data['error'] = $errors ? reset($errors) : lang('Sales.must_enter_numeric');
-        } else {
-            if ($paymentType === lang('Sales.giftcard')) {
-                // For giftcard payments, the register input amount_tendered becomes the giftcard number
-                $amountTendered = parse_decimals($this->request->getPost('amount_tendered'));
-                $giftcardNumber = $amountTendered;
+        $('.giftcard-input').autocomplete({
+            source: "<?= site_url('giftcards/suggest') ?>",
+            minChars: 0,
+            delay: 10,
+            select: function(a, ui) {
+                $(this).val(ui.item.value);
+                $('#add_payment_form').submit();
+                return false;
+            }
+        });
 
-                $payments = $this->sale_lib->getPayments();
-                $paymentType = $paymentType . ':' . $giftcardNumber;
-                $currentPaymentsWithGiftcard = isset($payments[$paymentType]) ? $payments[$paymentType]['payment_amount'] : 0;
-                $currentGiftcardValue = $giftcard->get_giftcard_value($giftcardNumber);
-                $currentGiftcardCustomer = $giftcard->get_giftcard_customer($giftcardNumber);
-                $customerId = $this->sale_lib->get_customer();
+        $('#comment').keyup(function() {
+            $.post("<?= esc(site_url("$controller_name/setComment")) ?>", {
+                comment: $('#comment').val()
+            });
+        });
 
-                if (isset($currentGiftcardCustomer) && $currentGiftcardCustomer != $customerId && $currentGiftcardCustomer != null) {
-                    $data['error'] = lang('Giftcards.cannot_use', [$giftcardNumber]);
-                } elseif (($currentGiftcardValue - $currentPaymentsWithGiftcard) <= 0 && $this->sale_lib->get_mode() === 'sale') {
-                    $data['error'] = lang('Giftcards.remaining_balance', [$giftcardNumber, $currentGiftcardValue]);
+        <?php if ($config['invoice_enable']) { ?>
+            $('#sales_invoice_number').keyup(function() {
+                $.post("<?= esc(site_url("$controller_name/setInvoiceNumber")) ?>", {
+                    sales_invoice_number: $('#sales_invoice_number').val()
+                });
+            });
+        <?php } ?>
+
+        $('#sales_print_after_sale').change(function() {
+            $.post("<?= esc(site_url("$controller_name/setPrintAfterSale")) ?>", {
+                sales_print_after_sale: $(this).is(':checked')
+            });
+        });
+
+        $('#price_work_orders').change(function() {
+            $.post("<?= esc(site_url("$controller_name/setPriceWorkOrders")) ?>", {
+                price_work_orders: $(this).is(':checked')
+            });
+        });
+
+        $('#email_receipt').change(function() {
+            $.post("<?= esc(site_url("$controller_name/setEmailReceipt")) ?>", {
+                email_receipt: $(this).is(':checked')
+            });
+        });
+
+        $('#finish_sale_button').click(function() {
+            $('#buttons_form').attr('action', "<?= "$controller_name/complete" ?>");
+            $('#buttons_form').submit();
+        });
+
+        $('#finish_invoice_quote_button').click(function() {
+            $('#buttons_form').attr('action', "<?= "$controller_name/complete" ?>");
+            $('#buttons_form').submit();
+        });
+
+        $('#suspend_sale_button').click(function() {
+            $('#buttons_form').attr('action', "<?= site_url("$controller_name/suspend") ?>");
+            $('#buttons_form').submit();
+        });
+
+        $('#cancel_sale_button').click(function() {
+            if (confirm("<?= lang(ucfirst($controller_name) . '.confirm_cancel_sale') ?>")) {
+                $('#buttons_form').attr('action', "<?= site_url("$controller_name/cancel") ?>");
+                $('#buttons_form').submit();
+            }
+        });
+
+        $('#add_payment_button').click(function() {
+            $('#add_payment_form').find('input[name="complete_after_payment"]').val('0');
+            $('#add_payment_form').submit();
+        });
+
+        $('#payment_types').change(check_payment_type).ready(check_payment_type);
+
+        $('#cart_contents input').keypress(function(event) {
+            if (event.which == 13) {
+                $(this).parents('tr').prevAll('form:first').submit();
+            }
+        });
+
+        $('#amount_tendered').keypress(function(event) {
+            if (event.which == 13) {
+                $('#add_payment_form').submit();
+            }
+        });
+
+        $('#finish_sale_button').keypress(function(event) {
+            if (event.which == 13) {
+                $('#finish_sale_form').submit();
+            }
+        });
+
+        dialog_support.init('a.modal-dlg, button.modal-dlg');
+
+        table_support.handle_submit = function(resource, response, stay_open) {
+            $.notify({
+                message: response.message
+            }, {
+                type: response.success ? 'success' : 'danger'
+            })
+
+            if (response.success) {
+                if (resource.match(/customers$/)) {
+                    $('#customer').val(response.id);
+                    $('#select_customer_form').submit();
                 } else {
-                    $newGiftcardValue = $giftcard->get_giftcard_value($giftcardNumber) - $this->sale_lib->get_amount_due();
-                    $newGiftcardValue = max($newGiftcardValue, 0);
-                    $this->sale_lib->set_giftcard_remainder($newGiftcardValue);
-                    $newGiftcardValue = to_currency($newGiftcardValue);
-                    $data['warning'] = lang('Giftcards.remaining_balance', [$giftcardNumber, $newGiftcardValue]);
-                    $amountTendered = min($this->sale_lib->get_amount_due(), $giftcard->get_giftcard_value($giftcardNumber));
-
-                    $this->sale_lib->addPayment($paymentType, $amountTendered);
-                }
-            } elseif ($paymentType === lang('Sales.rewards')) {
-                $customerId = $this->sale_lib->get_customer();
-                $packageId = $this->customer->get_info($customerId)->package_id;
-                if (!empty($packageId)) {
-                    $points = $this->customer->get_info($customerId)->points;
-                    $points = ($points == null ? 0 : $points);
-
-                    $payments = $this->sale_lib->getPayments();
-                    $currentPaymentsWithRewards = isset($payments[$paymentType]) ? $payments[$paymentType]['payment_amount'] : 0;
-                    $curRewardsValue = $points;
-
-                    if (($curRewardsValue - $currentPaymentsWithRewards) <= 0) {
-                        $data['error'] = lang('Sales.rewards_remaining_balance') . to_currency($curRewardsValue);
+                    const $stock_location = $("select[name='stock_location']").val();
+                    $('#item_location').val($stock_location);
+                    $('#item').val(response.id);
+                    if (stay_open) {
+                        $('#add_item_form').ajaxSubmit();
                     } else {
-                        $newRewardValue = $points - $this->sale_lib->get_amount_due();
-                        $newRewardValue = max($newRewardValue, 0);
-                        $this->sale_lib->set_rewards_remainder($newRewardValue);
-                        $newRewardValue = str_replace('$', '\$', to_currency($newRewardValue));
-                        $data['warning'] = lang('Sales.rewards_remaining_balance') . $newRewardValue;
-                        $amountTendered = min($this->sale_lib->get_amount_due(), $points);
-
-                        $this->sale_lib->addPayment($paymentType, $amountTendered);
+                        $('#add_item_form').submit();
                     }
                 }
-            } elseif ($paymentType === lang('Sales.cash')) {
-                $amountDue = $this->sale_lib->get_total();
-                $salesTotal = $this->sale_lib->get_total(false);
-                $amountTendered = parse_decimals($this->request->getPost('amount_tendered'));
-                $this->sale_lib->addPayment($paymentType, $amountTendered);
-                $cashAdjustmentAmount = $amountDue - $salesTotal;
-                if ($cashAdjustmentAmount <> 0) {
-                    $this->session->set('cash_mode', CASH_MODE_TRUE);
-                    $this->sale_lib->addPayment(lang('Sales.cash_adjustment'), $cashAdjustmentAmount, null, CASH_ADJUSTMENT_TRUE);
-                }
-            } else {
-                $amountTendered = parse_decimals($this->request->getPost('amount_tendered'));
-                $referenceCode = $this->request->getPost('reference_code');
-                $this->sale_lib->addPayment($paymentType, $amountTendered, $referenceCode);
             }
         }
 
-        return $this->reload($data);
-    }
+        $('[name="price"],[name="quantity"],[name="discount"],[name="description"],[name="serialnumber"],[name="discounted_total"]').change(function() {
+            $(this).parents('tr').prevAll('form:first').submit()
+        });
 
-    /**
-     * Multiple Payments. Used in app/Views/sales/register.php
-     *
-     * @param string $payment_id
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getDeletePayment(string $payment_id): ResponseInterface|string
-    {
-        helper('url');
+        $('[name="discount_toggle"]').change(function() {
+            const input = $('<input>').attr('type', 'hidden').attr('name', 'discount_type').val(($(this).prop('checked')) ? 1 : 0);
+            $('#cart_' + $(this).attr('data-line')).append($(input));
+            $('#cart_' + $(this).attr('data-line')).submit();
+        });
+    });
 
-        $this->sale_lib->delete_payment(base64url_decode($payment_id));
+    function check_payment_type() {
+        const cash_mode = <?= json_encode($cash_mode) ?>;
+        const paymentType = $("#payment_types").val();
+        const isGiftCard = paymentType == "<?= lang(ucfirst($controller_name) . '.giftcard') ?>";
+        const isCash = paymentType == "<?= lang(ucfirst($controller_name) . '.cash') ?>";
+        const needsReferenceCode = referenceCodePaymentTypes.indexOf(paymentType) !== -1;
 
-        return $this->reload();
-    }
-
-    /**
-     * Add an item to the sale. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postAdd(): ResponseInterface|string
-    {
-        $data = [];
-
-        $discount = $this->config['default_sales_discount'];
-        $discount_type = $this->config['default_sales_discount_type'];
-
-        // Check if any discount is assigned to the selected customer
-        $customer_id = $this->sale_lib->get_customer();
-        if ($customer_id != NEW_ENTRY) {
-            // Load the customer discount if any
-            $customer_discount = $this->customer->get_info($customer_id)->discount;
-            $customer_discount_type = $this->customer->get_info($customer_id)->discount_type;
-            if ($customer_discount != '') {
-                $discount = $customer_discount;
-                $discount_type = $customer_discount_type;
-            }
-        }
-
-        $item_id_or_number_or_item_kit_or_receipt = $this->request->getPost('item', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $this->token_lib->parse_barcode($quantity, $price, $item_id_or_number_or_item_kit_or_receipt);
-        $mode = $this->sale_lib->get_mode();
-        $quantity = ($mode == 'return') ? -$quantity : $quantity;
-        $item_location = $this->sale_lib->get_sale_location();
-
-        if ($mode == 'return' && $this->sale->isValidReceipt($item_id_or_number_or_item_kit_or_receipt)) {
-            $this->sale_lib->return_entire_sale($item_id_or_number_or_item_kit_or_receipt);
-        } elseif ($this->item_kit->is_valid_item_kit($item_id_or_number_or_item_kit_or_receipt)) {
-            // Add kit item to order if one is assigned
-            $pieces = explode(' ', $item_id_or_number_or_item_kit_or_receipt);
-
-            $item_kit_id = (count($pieces) > 1) ? $pieces[1] : $item_id_or_number_or_item_kit_or_receipt;
-            $item_kit_info = $this->item_kit->get_info($item_kit_id);
-            $kit_item_id = $item_kit_info->kit_item_id;
-            $kit_price_option = $item_kit_info->price_option;
-            $kit_print_option = $item_kit_info->print_option; // 0-all, 1-priced, 2-kit-only
-
-            if ($discount_type == $item_kit_info->kit_discount_type) {
-                if ($item_kit_info->kit_discount > $discount) {
-                    $discount = $item_kit_info->kit_discount;
-                }
-            } else {
-                $discount = $item_kit_info->kit_discount;
-                $discount_type = $item_kit_info->kit_discount_type;
-            }
-
-            $print_option = PRINT_ALL; // Always include in list of items on invoice // TODO: This variable is never used in the code
-
-            if (!empty($kit_item_id)) {
-                if (!$this->sale_lib->add_item($kit_item_id, $item_location, $quantity, $discount, $discount_type, PRICE_MODE_KIT, $kit_price_option, $kit_print_option, $price)) {
-                    $data['error'] = lang('Sales.unable_to_add_item');
-                } else {
-                    $data['warning'] = $this->sale_lib->out_of_stock($item_kit_id, $item_location);
-                }
-            }
-
-            // Add item kit items to order
-            $stock_warning = null;
-            if (!$this->sale_lib->add_item_kit($item_id_or_number_or_item_kit_or_receipt, $item_location, $discount, $discount_type, $kit_price_option, $kit_print_option, $stock_warning)) {
-                $data['error'] = lang('Sales.unable_to_add_item');
-            } elseif ($stock_warning != null) {
-                $data['warning'] = $stock_warning;
-            }
+        if (isGiftCard) {
+            $("#sale_total").html("<?= to_currency($total) ?>");
+            $("#sale_amount_due").html("<?= to_currency($amount_due) ?>");
+            $("#amount_tendered_label").html("<?= lang(ucfirst($controller_name) . '.giftcard_number') ?>");
+            $("#amount_tendered:enabled").val('').focus();
+            $(".giftcard-input").attr('disabled', false);
+            $(".non-giftcard-input").attr('disabled', true);
+            $(".giftcard-input:enabled").val('').focus();
+            $(".reference-code-input").hide();
+        } else if (isCash && cash_mode == '1') {
+            $("#sale_total").html("<?= to_currency($non_cash_total) ?>");
+            $("#sale_amount_due").html("<?= to_currency($cash_amount_due) ?>");
+            $("#amount_tendered_label").html("<?= lang(ucfirst($controller_name) . '.amount_tendered') ?>");
+            $("#amount_tendered:enabled").val("<?= to_currency_no_money($cash_amount_due) ?>");
+            $(".giftcard-input").attr('disabled', true);
+            $(".non-giftcard-input").attr('disabled', false);
+            $(".reference-code-input").hide();
         } else {
-            if ($item_id_or_number_or_item_kit_or_receipt == '' || !$this->sale_lib->add_item($item_id_or_number_or_item_kit_or_receipt, $item_location, $quantity, $discount, $discount_type, PRICE_MODE_STANDARD, null, null, $price)) {
-                $data['error'] = lang('Sales.unable_to_add_item');
+            $("#sale_total").html("<?= to_currency($non_cash_total) ?>");
+            $("#sale_amount_due").html("<?= to_currency($amount_due) ?>");
+            $("#amount_tendered_label").html("<?= lang(ucfirst($controller_name) . '.amount_tendered') ?>");
+            $("#amount_tendered:enabled").val("<?= to_currency_no_money($amount_due) ?>");
+            $(".giftcard-input").attr('disabled', true);
+            $(".non-giftcard-input").attr('disabled', false);
+            if (needsReferenceCode) {
+                $("#reference_code_label").html("<?= lang(ucfirst($controller_name) . '.reference_code') ?>");
+                $(".reference-code-input").show();
+                $(".reference-code-input input").attr('disabled', false);
             } else {
-                $data['warning'] = $this->sale_lib->out_of_stock($item_id_or_number_or_item_kit_or_receipt, $item_location);
-            }
-        }
-
-        return $this->reload($data);
-    }
-
-    /**
-     * Edit an item in the sale. Used in app/Views/sales/register.php
-     *
-     * @param string $line
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postEditItem(string $line): ResponseInterface|string
-    {
-        $data = [];
-
-        $rules = [
-            'price'    => 'trim|required|decimal_locale|nonNegativeDecimal',
-            'quantity' => 'trim|required|decimal_locale',
-            'discount' => 'trim|permit_empty|decimal_locale|nonNegativeDecimal',
-        ];
-
-        $messages = [
-            'price' => [
-                'nonNegativeDecimal' => lang('Sales.negative_price_invalid'),
-            ],
-            'discount' => [
-                'nonNegativeDecimal' => lang('Sales.negative_discount_invalid'),
-            ],
-        ];
-
-        if ($this->validate($rules, $messages)) {
-            $description = $this->request->getPost('description', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $serialnumber = $this->request->getPost('serialnumber', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $price = parse_decimals($this->request->getPost('price'));
-            $price = $price !== false ? number_format((float) $price, totals_decimals(), '.', '') : $price;
-            $quantity = parse_decimals($this->request->getPost('quantity'));
-            $discount_type = $this->request->getPost('discount_type', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $discount = $discount_type
-                ? parse_quantity($this->request->getPost('discount'))
-                : parse_decimals($this->request->getPost('discount'));
-            $discount = $discount ?: 0;
-
-            // Return mode legitimately uses negative quantities for refunds
-            if ($this->sale_lib->get_mode() != 'return' && $quantity < 0) {
-                $data['error'] = lang('Sales.negative_quantity_invalid');
-                return $this->reload($data);
-            }
-
-            // Business logic: discount bounds depend on discount_type and item values
-            if ($discount_type == PERCENT && $discount > 100) {
-                $data['error'] = lang('Sales.discount_percent_exceeds_100');
-                return $this->reload($data);
-            }
-
-            $precision = totals_decimals();
-            if ($discount_type == FIXED && bccomp((string)$discount, bcmul((string)abs($quantity), (string)$price, $precision), $precision) > 0) {
-                $data['error'] = lang('Sales.discount_exceeds_item_total');
-                return $this->reload($data);
-            }
-
-            // sales_change_price grant is enforced server-side here; the UI-only "change_price" flag must not be trusted
-            $current_price = $this->sale_lib->get_cart()[$line]['price'] ?? null;
-            $employee_id = $this->employee->get_logged_in_employee_info()->person_id;
-            if ($current_price !== null && bccomp((string)$price, (string)$current_price, $precision) != 0 && !$this->employee->has_grant('sales_change_price', $employee_id)) {
-                $data['error'] = lang('Sales.not_authorized');
-                return $this->reload($data);
-            }
-
-            $item_location = $this->request->getPost('location', FILTER_SANITIZE_NUMBER_INT);
-            $discounted_total = $this->request->getPost('discounted_total') != ''
-                ? parse_decimals($this->request->getPost('discounted_total') ?? '')
-                : null;
-
-            $this->sale_lib->edit_item($line, $description, $serialnumber, $quantity, $discount, $discount_type, $price, $discounted_total);
-
-            $this->sale_lib->empty_payments();
-
-            $data['warning'] = $this->sale_lib->out_of_stock($this->sale_lib->get_item_id($line), $item_location);
-        } else {
-            $errors = $this->validator->getErrors();
-            $data['error'] = $errors ? reset($errors) : lang('Sales.error_editing_item');
-        }
-
-        return $this->reload($data);
-    }
-
-    /**
-     * Deletes an item specified in the parameter from the shopping cart. Used in app/Views/sales/register.php
-     *
-     * @param int $item_id
-     * @return ResponseInterface
-     * @throws ReflectionException
-     * @noinspection PhpUnused
-     */
-    public function getDeleteItem(int $item_id): ResponseInterface|string
-    {
-        $this->sale_lib->delete_item($item_id);
-
-        $this->sale_lib->empty_payments();
-
-        return $this->reload();
-    }
-
-    /**
-     * Remove the current customer from the sale. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getRemoveCustomer(): ResponseInterface|string
-    {
-        $this->sale_lib->clear_giftcard_remainder();
-        $this->sale_lib->clear_rewards_remainder();
-        $this->sale_lib->delete_payment(lang('Sales.rewards'));
-        $this->sale_lib->clear_invoice_number();
-        $this->sale_lib->clear_quote_number();
-        $this->sale_lib->remove_customer();
-
-        return $this->reload();
-    }
-
-    /**
-     * Complete and finalize a sale. Used in app/Views/sales/register.php
-     *
-     * @return string
-     * @throws ReflectionException
-     * @noinspection PhpUnused
-     */
-    public function postComplete(): string    // TODO: this function is huge.  Probably should be refactored.
-    {
-        $saleId = $this->sale_lib->get_sale_id();
-        $data = [];
-        $data['dinner_table'] = $this->sale_lib->get_dinner_table();
-
-        $data['cart'] = $this->sale_lib->get_cart();
-
-        $data['include_hsn'] = (bool)$this->config['include_hsn'];
-        $time = time();
-        $data['transaction_time'] = to_datetime($time);
-        $data['transaction_date'] = to_date($time);
-        $data['show_stock_locations'] = $this->stock_location->show_locations('sales');
-        $data['comments'] = $this->sale_lib->get_comment();
-        $employeeId = $this->employee->get_logged_in_employee_info()->person_id;
-        $employeeInfo = $this->employee->get_info($employeeId);
-        $data['employee'] = $employeeInfo->first_name . ' ' . mb_substr($employeeInfo->last_name, 0, 1);
-
-        $data['company_info'] = implode("\n", [$this->config['address'], $this->config['phone']]);
-
-        if ($this->config['account_number']) {
-            $data['company_info'] .= "\n" . lang('Sales.account_number') . ": " . $this->config['account_number'];
-        }
-
-        if ($this->config['tax_id'] != '') {
-            $data['company_info'] .= "\n" . lang('Sales.tax_id') . ": " . $this->config['tax_id'];
-        }
-
-        $data['invoice_number_enabled'] = $this->sale_lib->is_invoice_mode();
-        $data['cur_giftcard_value'] = $this->sale_lib->get_giftcard_remainder();
-        $data['cur_rewards_value'] = $this->sale_lib->get_rewards_remainder();
-        $data['print_after_sale'] = $this->session->get('sales_print_after_sale');
-        $data['price_work_orders'] = $this->sale_lib->is_price_work_orders();
-        $data['email_receipt'] = $this->sale_lib->is_email_receipt();
-        $customerId = $this->sale_lib->get_customer();
-        $invoiceNumber = $this->sale_lib->get_invoice_number();
-        $data["invoice_number"] = $invoiceNumber;
-        $workOrderNumber = $this->sale_lib->get_work_order_number();
-        $data["work_order_number"] = $workOrderNumber;
-        $quoteNumber = $this->sale_lib->get_quote_number();
-        $data["quote_number"] = $quoteNumber;
-        $customerInfo = $this->_load_customer_data($customerId, $data);
-
-        if ($customerInfo != null) {
-            $data["customer_comments"] = $customerInfo->comments;
-            $data['tax_id'] = $customerInfo->tax_id;
-        }
-        $taxDetails = $this->tax_lib->get_taxes($data['cart']);    // TODO: Duplicated code
-        $data['taxes'] = $taxDetails[0];
-        $data['discount'] = $this->sale_lib->get_discount();
-        $data['payments'] = $this->sale_lib->getPayments();
-
-        // Returns 'subtotal', 'total', 'cash_total', 'payment_total', 'amount_due', 'cash_amount_due', 'payments_cover_total'
-        $totals = $this->sale_lib->get_totals($taxDetails[0]);
-        $data['subtotal'] = $totals['subtotal'];
-        $data['total'] = $totals['total'];
-        $data['payments_total'] = $totals['payment_total'];
-        $data['payments_cover_total'] = $totals['payments_cover_total'];
-        $data['cash_rounding'] = $this->session->get('cash_rounding');
-        $data['cash_mode'] = $this->session->get('cash_mode');    // TODO: Duplicated code
-        $data['prediscount_subtotal'] = $totals['prediscount_subtotal'];
-        $data['cash_total'] = $totals['cash_total'];
-        $data['non_cash_total'] = $totals['total'];
-        $data['cash_amount_due'] = $totals['cash_amount_due'];
-        $data['non_cash_amount_due'] = $totals['amount_due'];
-
-        // Prevent negative total sales (fraud/theft vector) - returns can have negative totals for legitimate refunds
-        if ($this->sale_lib->get_mode() != 'return' && bccomp($totals['total'], '0') < 0) {
-            $data['error'] = lang('Sales.negative_total_invalid');
-            return $this->reload($data);
-        }
-
-        if (!$totals['payments_cover_total'] && !$this->sale_lib->is_invoice_mode() && !$this->sale_lib->is_quote_mode()) {
-            $data['error'] = lang('Sales.amount_due_not_covered');
-            return $this->reload($data);
-        }
-
-        if ($data['cash_mode']) {    // TODO: Convert this to ternary notation
-            $data['amount_due'] = $totals['cash_amount_due'];
-        } else {
-            $data['amount_due'] = $totals['amount_due'];
-        }
-
-        $data['amount_change'] = $data['amount_due'] * -1;
-
-        if ($data['amount_change'] > 0) {
-            // Save cash refund to the cash payment transaction if found, if not then add as new Cash transaction
-
-            if (array_key_exists(lang('Sales.cash'), $data['payments'])) {
-                $data['payments'][lang('Sales.cash')]['cash_refund'] = $data['amount_change'];
-            } else {
-                $payment = [
-                    lang('Sales.cash') => [
-                        'payment_type'   => lang('Sales.cash'),
-                        'payment_amount' => 0,
-                        'cash_refund'    => $data['amount_change']
-                    ]
-                ];
-
-                $data['payments'] += $payment;
-            }
-        }
-
-        $data['print_price_info'] = true;
-
-        if ($this->sale_lib->is_invoice_mode()) {
-            $invoiceFormat = $this->config['sales_invoice_format'];
-
-            // Generate final invoice number (if using the invoice in sales by receipt mode then the invoice number can be manually entered or altered in some way
-            if (!empty($invoiceFormat) && $invoiceNumber == null) {
-                // The user can retain the default encoded format or can manually override it.  It still passes through the rendering step.
-                $invoiceNumber = $this->token_lib->render($invoiceFormat);
-            }
-
-
-            if ($saleId == NEW_ENTRY && $this->sale->check_invoice_number_exists($invoiceNumber)) {
-                $data['error'] = lang('Sales.invoice_number_duplicate', [$invoiceNumber]);
-                return $this->reload($data);
-            } else {
-                $data['invoice_number'] = $invoiceNumber;
-                $data['sale_status'] = COMPLETED;
-                $saleType = SALE_TYPE_INVOICE;
-
-                $invoiceType = $this->config['invoice_type'];
-                if (!Sale_lib::isValidInvoiceType($invoiceType)) {
-                    $invoiceType = 'invoice';
-                }
-                $invoiceView = $invoiceType;
-
-                // Save the data to the sales table
-                $data['sale_id_num'] = $this->sale->save_value($saleId, $data['sale_status'], $data['cart'], $customerId, $employeeId, $data['comments'], $invoiceNumber, $workOrderNumber, $quoteNumber, $saleType, $data['payments'], $data['dinner_table'], $taxDetails);
-                $data['sale_id'] = 'POS ' . $data['sale_id_num'];
-
-                // Resort and filter cart lines for printing
-                $data['cart'] = $this->sale_lib->sortAndFilterCart($data['cart']);
-
-                if ($data['sale_id_num'] === INSUFFICIENT_GIFTCARD_BALANCE) {
-                    $data['error_message'] = lang('Sales.insufficient_giftcard_balance');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] === INSUFFICIENT_REWARD_POINTS) {
-                    $data['error_message'] = lang('Sales.insufficient_reward_points');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] == NEW_ENTRY) {
-                    $data['error_message'] = lang('Sales.transaction_failed');
-                    return $this->reload($data);
-                } else {
-                    $data['barcode'] = $this->barcode_lib->generate_receipt_barcode($data['sale_id']);
-                    $this->sale_lib->clear_all();
-                    return view('sales/' . $invoiceView, $data);
-                }
-            }
-        } elseif ($this->sale_lib->is_work_order_mode()) {
-
-            if (!($data['price_work_orders'] == 1)) {
-                $data['print_price_info'] = false;
-            }
-
-            $data['sales_work_order'] = lang('Sales.work_order');
-            $data['work_order_number_label'] = lang('Sales.work_order_number');
-
-            if ($workOrderNumber == null) {
-                // Generate work order number
-                $workOrderFormat = $this->config['work_order_format'];
-                $workOrderNumber = $this->token_lib->render($workOrderFormat);
-            }
-
-            if ($saleId == NEW_ENTRY && $this->sale->check_work_order_number_exists($workOrderNumber)) {
-                $data['error'] = lang('Sales.work_order_number_duplicate');
-                return $this->reload($data);
-            } else {
-                $data['work_order_number'] = $workOrderNumber;
-                $data['sale_status'] = SUSPENDED;
-                $saleType = SALE_TYPE_WORK_ORDER;
-
-                $data['sale_id_num'] = $this->sale->save_value($saleId, $data['sale_status'], $data['cart'], $customerId, $employeeId, $data['comments'], $invoiceNumber, $workOrderNumber, $quoteNumber, $saleType, $data['payments'], $data['dinner_table'], $taxDetails);
-
-                if ($data['sale_id_num'] === INSUFFICIENT_GIFTCARD_BALANCE) {
-                    $data['error_message'] = lang('Sales.insufficient_giftcard_balance');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] === INSUFFICIENT_REWARD_POINTS) {
-                    $data['error_message'] = lang('Sales.insufficient_reward_points');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] == NEW_ENTRY) {
-                    $data['error_message'] = lang('Sales.transaction_failed');
-                    return $this->reload($data);
-                }
-
-                $this->sale_lib->set_suspended_id($data['sale_id_num']);
-
-                $data['cart'] = $this->sale_lib->sortAndFilterCart($data['cart']);
-
-                $data['barcode'] = null;
-
-                $this->sale_lib->clear_all();
-                return view('sales/work_order', $data);
-            }
-        } elseif ($this->sale_lib->is_quote_mode()) {
-            $data['sales_quote'] = lang('Sales.quote');
-            $data['quote_number_label'] = lang('Sales.quote_number');
-
-            if ($quoteNumber == null) {
-                // Generate quote number
-                $quoteFormat = $this->config['sales_quote_format'];
-                $quoteNumber = $this->token_lib->render($quoteFormat);
-            }
-
-            if ($saleId == NEW_ENTRY && $this->sale->check_quote_number_exists($quoteNumber)) {
-                $data['error'] = lang('Sales.quote_number_duplicate');
-                return $this->reload($data);
-            } else {
-                $data['quote_number'] = $quoteNumber;
-                $data['sale_status'] = SUSPENDED;
-                $saleType = SALE_TYPE_QUOTE;
-
-                $data['sale_id_num'] = $this->sale->save_value($saleId, $data['sale_status'], $data['cart'], $customerId, $employeeId, $data['comments'], $invoiceNumber, $workOrderNumber, $quoteNumber, $saleType, $data['payments'], $data['dinner_table'], $taxDetails);
-
-                if ($data['sale_id_num'] === INSUFFICIENT_GIFTCARD_BALANCE) {
-                    $data['error_message'] = lang('Sales.insufficient_giftcard_balance');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] === INSUFFICIENT_REWARD_POINTS) {
-                    $data['error_message'] = lang('Sales.insufficient_reward_points');
-                    return $this->reload($data);
-                } elseif ($data['sale_id_num'] == NEW_ENTRY) {
-                    $data['error_message'] = lang('Sales.transaction_failed');
-                    return $this->reload($data);
-                }
-
-                $this->sale_lib->set_suspended_id($data['sale_id_num']);
-
-                $data['cart'] = $this->sale_lib->sortAndFilterCart($data['cart']);
-                $data['barcode'] = null;
-
-                $this->sale_lib->clear_all();
-                return view('sales/quote', $data);
-            }
-        } else {
-            // Save the data to the sales table
-            $data['sale_status'] = COMPLETED;
-            if ($this->sale_lib->is_return_mode()) {
-                $saleType = SALE_TYPE_RETURN;
-            } else {
-                $saleType = SALE_TYPE_POS;
-            }
-
-            $data['sale_id_num'] = $this->sale->save_value($saleId, $data['sale_status'], $data['cart'], $customerId, $employeeId, $data['comments'], $invoiceNumber, $workOrderNumber, $quoteNumber, $saleType, $data['payments'], $data['dinner_table'], $taxDetails);
-
-            $data['sale_id'] = 'POS ' . $data['sale_id_num'];
-
-            $data['cart'] = $this->sale_lib->sortAndFilterCart($data['cart']);
-
-            if ($data['sale_id_num'] === INSUFFICIENT_GIFTCARD_BALANCE) {
-                $data['error_message'] = lang('Sales.insufficient_giftcard_balance');
-                return $this->reload($data);
-            } elseif ($data['sale_id_num'] === INSUFFICIENT_REWARD_POINTS) {
-                $data['error_message'] = lang('Sales.insufficient_reward_points');
-                return $this->reload($data);
-            } elseif ($data['sale_id_num'] == NEW_ENTRY) {
-                $data['error_message'] = lang('Sales.transaction_failed');
-                return $this->reload($data);
-            } else {
-                $data['barcode'] = $this->barcode_lib->generate_receipt_barcode($data['sale_id']);
-
-                // Validate receipt template to prevent path traversal
-                $receiptTemplate = $this->config['receipt_template'] ?? '';
-                if (!Sale_lib::isValidReceiptTemplate($receiptTemplate)) {
-                    $receiptTemplate = 'receipt_default';
-                }
-                $data['receipt_template_view'] = $receiptTemplate;
-
-                $this->sale_lib->clear_all();
-                return view('sales/receipt', $data);
+                $(".reference-code-input").hide();
+                $(".reference-code-input input").attr('disabled', true);
             }
         }
     }
 
-    /**
-     * Email PDF invoice to customer. Used in app/Views/sales/form.php, invoice.php, quote.php, tax_invoice.php and work_order.php
-     *
-     * @param int $saleId
-     * @param string $type
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getSendPdf(int $saleId, string $type = 'invoice'): ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
+    // ========== Keyboard Shortcuts Handler ==========
+    document.body.onkeyup = function(event) {
+        if ($(event.target).closest('.modal').length || $('.modal.in').length) {
+            return;
         }
-
-        $saleData = $this->_load_sale_data($saleId);
-
-        $result = false;
-        $message = lang('Sales.invoice_no_email');
-
-        if (!empty($saleData['customer_email'])) {
-            $to = $saleData['customer_email'];
-            $number = array_key_exists($type . "_number", $saleData) ?  $saleData[$type . "_number"] : "";
-            $subject = lang('Sales.' . $type) . ' ' . $number;
-
-            $text = $this->config['invoice_email_message'];
-            $tokens = [
-                new Token_invoice_sequence($number),
-                new Token_invoice_count('POS ' . $saleData['sale_id']),
-                new Token_customer((array)$saleData)
-            ];
-            $text = $this->token_lib->render($text, $tokens);
-            $saleData['mimetype'] = $this->email_lib->getLogoMimeType();
-
-            // Build img_tag for email views that need it (receipt_email.php)
-            $saleData['img_tag'] = $this->email_lib->buildLogoImgTag();
-
-            // Generate email attachment: invoice in PDF format
-            $view = Services::renderer();
-            $html = $view->setData($saleData)->render("sales/$type" . '_email', $saleData);
-
-            // Load PDF helper
-            helper(['dompdf', 'file']);
-            $filename = sys_get_temp_dir() . '/' . lang('Sales.' . $type) . '-' . str_replace('/', '-', $number) . '.pdf';
-            if (file_put_contents($filename, create_pdf($html)) !== false) {
-                $result = $this->email_lib->sendEmail($to, $subject, $text, $filename);
-            }
-
-            $message = lang($result ? "Sales." . $type . "_sent" : "Sales." . $type . "_unsent") . ' ' . $to;
-        }
-
-        $this->sale_lib->clear_all();
-
-        return $this->response->setJSON(['success' => $result, 'message' => $message, 'id' => $saleId]);
-    }
-
-    /**
-     * Emails sales receipt to customer. Used in app/Views/sales/receipt.php
-     *
-     * @param int $saleId
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getSendReceipt(int $saleId): ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        }
-
-        $saleData = $this->_load_sale_data($saleId);
-
-        $result = false;
-        $message = lang('Sales.receipt_no_email');
-
-        if (!empty($saleData['customer_email'])) {
-            $saleData['barcode'] = $this->barcode_lib->generate_receipt_barcode($saleData['sale_id']);
-            $saleData['img_tag'] = $this->email_lib->buildLogoImgTag();
-
-            $to = $saleData['customer_email'];
-            $subject = lang('Sales.receipt');
-
-            $view = Services::renderer();
-            $text = $view->setData($saleData)->render('sales/receipt_email');
-
-            $result = $this->email_lib->sendEmail($to, $subject, $text);
-
-            $message = lang($result ? 'Sales.receipt_sent' : 'Sales.receipt_unsent') . ' ' . $to;
-        }
-
-        $this->sale_lib->clear_all();
-
-        return $this->response->setJSON(['success' => $result, 'message' => $message, 'id' => $saleId]);
-    }
-
-    /**
-     * @param int $customer_id
-     * @param array $data
-     * @param bool $stats
-     * @return array|stdClass|string|null
-     */
-    private function _load_customer_data(int $customer_id, array &$data, bool $stats = false): array|string|stdClass|null    // TODO: Hungarian notation
-    {
-        $customer_info = '';
-
-        if ($customer_id != NEW_ENTRY) {
-            $customer_info = $this->customer->get_info($customer_id);
-            $data['customer_id'] = $customer_id;
-
-            if (!empty($customer_info->company_name)) {
-                $data['customer'] = $customer_info->company_name;
-            } else {
-                $data['customer'] = $customer_info->first_name . ' ' . $customer_info->last_name;
-            }
-
-            $data['first_name'] = $customer_info->first_name;
-            $data['last_name'] = $customer_info->last_name;
-            $data['customer_email'] = $customer_info->email;
-            $data['customer_address'] = $customer_info->address_1;
-
-            if (!empty($customer_info->zip) || !empty($customer_info->city)) {
-                $data['customer_location'] = $customer_info->zip . ' ' . $customer_info->city . "\n" . $customer_info->state;
-            } else {
-                $data['customer_location'] = '';
-            }
-
-            $data['customer_account_number'] = $customer_info->account_number;
-            $data['customer_discount'] = $customer_info->discount;
-            $data['customer_discount_type'] = $customer_info->discount_type;
-            $package_id = $this->customer->get_info($customer_id)->package_id;
-
-            if ($package_id != null) {
-                $package_name = $this->customer_rewards->get_name($package_id);
-                $points = $this->customer->get_info($customer_id)->points;
-                $data['customer_rewards']['package_id'] = $package_id;
-                $data['customer_rewards']['points'] = empty($points) ? 0 : $points;
-                $data['customer_rewards']['package_name'] = $package_name;
-            }
-
-            if ($stats) {
-                $cust_stats = $this->customer->get_stats($customer_id);
-                $data['customer_total'] = empty($cust_stats) ? 0 : $cust_stats->total;
-            }
-
-            $data['customer_info'] = implode("\n", [
-                $data['customer'],
-                $data['customer_address'],
-                $data['customer_location']
-            ]);
-
-            if ($data['customer_account_number']) {
-                $data['customer_info'] .= "\n" . lang('Sales.account_number') . ": " . $data['customer_account_number'];
-            }
-
-            if ($customer_info->tax_id != '') {
-                $data['customer_info'] .= "\n" . lang('Sales.tax_id') . ": " . $customer_info->tax_id;
-            }
-            $data['tax_id'] = $customer_info->tax_id;
-        }
-
-        return $customer_info;
-    }
-
-    /**
-     * @param $sale_id
-     * @return array
-     */
-    private function _load_sale_data($sale_id): array    // TODO: Hungarian notation
-    {
-        $this->sale_lib->clear_all();
-        $cash_rounding = $this->sale_lib->reset_cash_rounding();
-        $data['cash_rounding'] = $cash_rounding;
-
-        $sale_info = $this->sale->get_info($sale_id)->getRowArray();
-        $this->sale_lib->copy_entire_sale($sale_id);
-        $data = [];
-        $data['cart'] = $this->sale_lib->get_cart();
-        $data['payments'] = $this->sale_lib->getPayments();
-        $data['selected_payment_type'] = $this->sale_lib->get_payment_type();
-
-        $tax_details = $this->tax_lib->get_taxes($data['cart'], $sale_id);
-        $data['taxes'] = $this->sale->get_sales_taxes($sale_id);
-        $data['discount'] = $this->sale_lib->get_discount();
-        $data['transaction_time'] = to_datetime(strtotime($sale_info['sale_time']));
-        $data['transaction_date'] = to_date(strtotime($sale_info['sale_time']));
-        $data['show_stock_locations'] = $this->stock_location->show_locations('sales');
-
-        $data['include_hsn'] = (bool)$this->config['include_hsn'];
-
-        // Returns 'subtotal', 'total', 'cash_total', 'payment_total', 'amount_due', 'cash_amount_due', 'payments_cover_total'
-        $totals = $this->sale_lib->get_totals($tax_details[0]);
-        $this->session->set('cash_adjustment_amount', $totals['cash_adjustment_amount']);
-        $data['subtotal'] = $totals['subtotal'];
-        $data['payments_total'] = $totals['payment_total'];
-        $data['payments_cover_total'] = $totals['payments_cover_total'];
-        $data['cash_mode'] = $this->session->get('cash_mode');    // TODO: Duplicated code.
-        $data['prediscount_subtotal'] = $totals['prediscount_subtotal'];
-        $data['cash_total'] = $totals['cash_total'];
-        $data['non_cash_total'] = $totals['total'];
-        $data['cash_amount_due'] = $totals['cash_amount_due'];
-        $data['non_cash_amount_due'] = $totals['amount_due'];
-
-        if ($data['cash_mode'] && ($data['selected_payment_type'] === lang('Sales.cash') || $data['payments_total'] > 0)) {
-            $data['total'] = $totals['cash_total'];
-            $data['amount_due'] = $totals['cash_amount_due'];
-        } else {
-            $data['total'] = $totals['total'];
-            $data['amount_due'] = $totals['amount_due'];
-        }
-
-        $data['amount_change'] = $data['amount_due'] * -1;
-
-        $employee_info = $this->employee->get_info($this->sale_lib->get_employee());
-        $data['employee'] = $employee_info->first_name . ' ' . mb_substr($employee_info->last_name, 0, 1);
-        $this->_load_customer_data($this->sale_lib->get_customer(), $data);
-
-        $data['sale_id_num'] = $sale_id;
-        $data['sale_id'] = 'POS ' . $sale_id;
-        $data['comments'] = $sale_info['comment'];
-        $data['invoice_number'] = $sale_info['invoice_number'];
-        $data['quote_number'] = $sale_info['quote_number'];
-        $data['sale_status'] = $sale_info['sale_status'];
-
-        $data['company_info'] = implode("\n", [$this->config['address'], $this->config['phone']]);    // TODO: Duplicated code.
-
-        if ($this->config['account_number']) {
-            $data['company_info'] .= "\n" . lang('Sales.account_number') . ": " . $this->config['account_number'];
-        }
-        if ($this->config['tax_id'] != '') {
-            $data['company_info'] .= "\n" . lang('Sales.tax_id') . ": " . $this->config['tax_id'];
-        }
-
-        $data['barcode'] = $this->barcode_lib->generate_receipt_barcode($data['sale_id']);
-        $data['print_after_sale'] = false;
-        $data['price_work_orders'] = false;
-
-        if ($this->sale_lib->get_mode() == 'sale_invoice') {    // TODO: Duplicated code.
-            $data['mode_label'] = lang('Sales.invoice');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'sale_quote') {
-            $data['mode_label'] = lang('Sales.quote');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'sale_work_order') {
-            $data['mode_label'] = lang('Sales.work_order');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'return') {
-            $data['mode_label'] = lang('Sales.return');
-            $data['customer_required'] = lang('Sales.customer_optional');
-        } else {
-            $data['mode_label'] = lang('Sales.receipt');
-            $data['customer_required'] = lang('Sales.customer_optional');
-        }
-
-        $invoice_type = $this->config['invoice_type'];
-        if (!Sale_lib::isValidInvoiceType($invoice_type)) {
-            $invoice_type = 'invoice';
-        }
-        $data['invoice_view'] = $invoice_type;
-
-        // Validate receipt template to prevent path traversal
-        $receipt_template = $this->config['receipt_template'] ?? '';
-        if (!Sale_lib::isValidReceiptTemplate($receipt_template)) {
-            $receipt_template = 'receipt_default';
-        }
-        $data['receipt_template_view'] = $receipt_template;
-
-        return $data;
-    }
-
-    /**
-     * @param array $data
-     * @return void
-     */
-    private function reload(array $data = []): ResponseInterface|string
-    {
-        $sale_id = $this->session->get('sale_id');    // TODO: This variable is never used
-
-        if ($sale_id == '') {
-            $sale_id = NEW_ENTRY;
-            $this->session->set('sale_id', NEW_ENTRY);
-        }
-        $cash_rounding = $this->sale_lib->reset_cash_rounding();
-
-        // cash_rounding indicates only that the site is configured for cash rounding
-        $data['cash_rounding'] = $cash_rounding;
-
-        $data['cart'] = $this->sale_lib->get_cart();
-        $customer_info = $this->_load_customer_data($this->sale_lib->get_customer(), $data, true);
-
-        $data['modes'] = $this->sale_lib->get_register_mode_options();
-        $data['mode'] = $this->sale_lib->get_mode();
-        $data['selected_table'] = $this->sale_lib->get_dinner_table();
-        $data['empty_tables'] = $this->sale_lib->get_empty_tables($data['selected_table']);
-        $data['stock_locations'] = $this->stock_location->get_allowed_locations('sales');
-        $data['stock_location'] = $this->sale_lib->get_sale_location();
-        $data['tax_exclusive_subtotal'] = $this->sale_lib->get_subtotal(true, true);
-        $tax_details = $this->tax_lib->get_taxes($data['cart']);    // TODO: Duplicated code.
-        $data['taxes'] = $tax_details[0];
-        $data['discount'] = $this->sale_lib->get_discount();
-        $data['payments'] = $this->sale_lib->getPayments();
-
-        // Returns 'subtotal', 'total', 'cash_total', 'payment_total', 'amount_due', 'cash_amount_due', 'payments_cover_total'
-        $totals = $this->sale_lib->get_totals($tax_details[0]);
-
-        $data['item_count'] = $totals['item_count'];
-        $data['total_units'] = $totals['total_units'];
-        $data['subtotal'] = $totals['subtotal'];
-        $data['total'] = $totals['total'];
-        $data['payments_total'] = $totals['payment_total'];
-        $data['payments_cover_total'] = $totals['payments_cover_total'];
-
-        // cash_mode indicates whether this sale is going to be processed using cash_rounding
-        $cash_mode = $this->session->get('cash_mode');
-        $data['cash_mode'] = $cash_mode;
-        $data['prediscount_subtotal'] = $totals['prediscount_subtotal'];    // TODO: Duplicated code.
-        $data['cash_total'] = $totals['cash_total'];
-        $data['non_cash_total'] = $totals['total'];
-        $data['cash_amount_due'] = $totals['cash_amount_due'];
-        $data['non_cash_amount_due'] = $totals['amount_due'];
-
-        $data['selected_payment_type'] = $this->sale_lib->get_payment_type();
-
-        if ($data['cash_mode'] && ($data['selected_payment_type'] == lang('Sales.cash') || $data['payments_total'] > 0)) {
-            $data['total'] = $totals['cash_total'];
-            $data['amount_due'] = $totals['cash_amount_due'];
-        } else {
-            $data['total'] = $totals['total'];
-            $data['amount_due'] = $totals['amount_due'];
-        }
-
-        $data['amount_change'] = $data['amount_due'] * -1;
-
-        $data['comment'] = $this->sale_lib->get_comment();
-        $data['email_receipt'] = $this->sale_lib->is_email_receipt();
-
-        if ($customer_info && $this->config['customer_reward_enable']) {
-            $data['payment_options'] = $this->sale->get_payment_options(true, true);
-        } else {
-            $data['payment_options'] = $this->sale->get_payment_options();
-        }
-
-        $data['reference_code_payment_types'] = get_reference_code_payment_types();
-
-        $data['items_module_allowed'] = $this->employee->has_grant('items', $this->employee->get_logged_in_employee_info()->person_id);
-        $data['change_price'] = $this->employee->has_grant('sales_change_price', $this->employee->get_logged_in_employee_info()->person_id);
-
-        $temp_invoice_number = $this->sale_lib->get_invoice_number();
-        $invoice_format = $this->config['sales_invoice_format'];
-
-        if ($temp_invoice_number == null || $temp_invoice_number == '') {
-            $temp_invoice_number = $this->token_lib->render($invoice_format, [], false);
-        }
-
-        $data['invoice_number'] = $temp_invoice_number;
-
-        $data['print_after_sale'] = $this->sale_lib->is_print_after_sale();
-        $data['price_work_orders'] = $this->sale_lib->is_price_work_orders();
-
-        $data['pos_mode'] = $data['mode'] == 'sale' || $data['mode'] == 'return';
-
-        $data['quote_number'] = $this->sale_lib->get_quote_number();
-        $data['work_order_number'] = $this->sale_lib->get_work_order_number();
-        $data['keyboardShortcuts'] = $this->sale_lib->getKeyShortcuts();
-
-        // TODO: the if/else set below should be converted to a switch
-        if ($this->sale_lib->get_mode() == 'sale_invoice') {    // TODO: Duplicated code.
-            $data['mode_label'] = lang('Sales.invoice');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'sale_quote') {
-            $data['mode_label'] = lang('Sales.quote');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'sale_work_order') {
-            $data['mode_label'] = lang('Sales.work_order');
-            $data['customer_required'] = lang('Sales.customer_required');
-        } elseif ($this->sale_lib->get_mode() == 'return') {
-            $data['mode_label'] = lang('Sales.return');
-            $data['customer_required'] = lang('Sales.customer_optional');
-        } else {
-            $data['mode_label'] = lang('Sales.receipt');
-            $data['customer_required'] = lang('Sales.customer_optional');
-        }
-
-        return view("sales/register", $data);
-    }
-
-    /**
-     * Load the sales receipt for a sale. Used in app/Views/sales/form.php
-     *
-     * @param int $saleId
-     * @return string
-     * @noinspection PhpUnused
-     */
-    public function getReceipt(int $saleId): string|ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return redirect()->to('no_access/sales/reports_sales');
-        }
-
-        $data = $this->_load_sale_data($saleId);
-        $this->sale_lib->clear_all();
-
-        return view('sales/receipt', $data);
-    }
-
-    /**
-     * Loads the sales invoice for a sale. Used in app/Views/sales/form.php
-     *
-     * @param int $saleId
-     * @return string
-     * @noinspection PhpUnused
-     */
-    public function getInvoice(int $saleId): string|ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return redirect()->to('no_access/sales/reports_sales');
-        }
-
-        $data = $this->_load_sale_data($saleId);
-        $this->sale_lib->clear_all();
-
-        return view('sales/' . $data['invoice_view'], $data);
-    }
-
-    /**
-     * Edits an existing sale or work order. Used in app/Views/sales/form.php
-     *
-     * @param int $saleId
-     * @return string
-     * @throws ReflectionException
-     */
-    public function getEdit(int $saleId): string|ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return redirect()->to('no_access/sales/reports_sales');
-        }
-
-        $data = [];
-
-        $saleInfo = $this->sale->get_info($saleId)->getRowArray();
-        $data['selected_customer_id'] = $saleInfo['customer_id'];
-        $data['selected_customer_name'] = $saleInfo['customer_name'];
-        $employeeInfo = $this->employee->get_info($saleInfo['employee_id']);
-        $data['selected_employee_id'] = $saleInfo['employee_id'];
-        $data['selected_employee_name'] = $employeeInfo->first_name . ' ' . $employeeInfo->last_name;
-        $data['sale_info'] = $saleInfo;
-        $balanceDue = round($saleInfo['amount_due'] - $saleInfo['amount_tendered'] + $saleInfo['cash_refund'], totals_decimals(), PHP_ROUND_HALF_UP);
-
-        if (!$this->sale_lib->reset_cash_rounding() && $balanceDue < 0) {
-            $balanceDue = 0;
-        }
-
-        $data['payments'] = [];
-
-        foreach ($this->sale->get_sale_payments($saleId)->getResult() as $payment) {
-            foreach (get_object_vars($payment) as $property => $value) {
-                $payment->$property = $value;
-            }
-            $data['payments'][] = $payment;
-        }
-
-        $data['payment_type_new'] = PAYMENT_TYPE_UNASSIGNED;
-        $data['payment_amount_new'] = $balanceDue;
-
-        $data['balance_due'] = $balanceDue != 0;
-
-        // Don't allow gift card to be a payment option in a sale transaction edit because it's a complex change
-        $paymentOptions = $this->sale->get_payment_options(false);
-
-        if ($this->sale_lib->reset_cash_rounding()) {
-            $paymentOptions[lang('Sales.cash_adjustment')] = lang('Sales.cash_adjustment');
-        }
-
-        $data['payment_options'] = $paymentOptions;
-        $data['reference_code_payment_types'] = get_reference_code_payment_types();
-
-        // Set up a slightly modified list of payment types for new payment entry
-        $paymentOptions["--"] = lang('Common.none_selected_text');
-
-        $data['new_payment_options'] = $paymentOptions;
-
-        return view('sales/form', $data);
-    }
-
-    /**
-     * @param int $sale_id
-     * @return ResponseInterface
-     * @throws ReflectionException
-     */
-    public function postDelete(int $sale_id = NEW_ENTRY, bool $update_inventory = true): ResponseInterface
-    {
-        $employee_id = $this->employee->get_logged_in_employee_info()->person_id;
-        $has_grant = $this->employee->has_grant('sales_delete', $employee_id);
-
-        if (!$has_grant) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        } else {
-            $sale_ids = $sale_id == NEW_ENTRY ? $this->request->getPost('ids', FILTER_SANITIZE_NUMBER_INT) : [$sale_id];
-
-            if ($this->sale->delete_list($sale_ids, $employee_id, $update_inventory)) {
-                return $this->response->setJSON([
-                    'success' => true,
-                    'message' => lang('Sales.successfully_deleted') . ' ' . count($sale_ids) . ' ' . lang('Sales.one_or_multiple'),
-                    'ids'     => $sale_ids
-                ]);
-            } else {
-                return $this->response->setJSON(['success' => false, 'message' => lang('Sales.unsuccessfully_deleted')]);
-            }
-        }
-    }
-
-    /**
-     * @param int $sale_id
-     * @param bool $update_inventory
-     * @return ResponseInterface
-     */
-    public function restore(int $sale_id = NEW_ENTRY, bool $update_inventory = true): ResponseInterface
-    {
-        $employee_id = $this->employee->get_logged_in_employee_info()->person_id;
-        $has_grant = $this->employee->has_grant('sales_delete', $employee_id);
-
-        if (!$has_grant) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        } else {
-            $sale_ids = $sale_id == NEW_ENTRY ? $this->request->getPost('ids', FILTER_SANITIZE_NUMBER_INT) : [$sale_id];
-
-            if ($this->sale->restore_list($sale_ids, $employee_id, $update_inventory)) {
-                return $this->response->setJSON([
-                    'success' => true,
-                    'message' => lang('Sales.successfully_restored') . ' ' . count($sale_ids) . ' ' . lang('Sales.one_or_multiple'),
-                    'ids'     => $sale_ids
-                ]);
-            } else {
-                return $this->response->setJSON(['success' => false, 'message' => lang('Sales.unsuccessfully_restored')]);
-            }
-        }
-    }
-
-    /**
-     * This saves the sale from the update sale view (sales/form).
-     * It only updates the sales table and payments.
-     * @param int $saleId
-     * @return ResponseInterface
-     * @throws ReflectionException
-     */
-    public function postSave(int $saleId = NEW_ENTRY): ResponseInterface
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        }
-
-        $newdate = $this->request->getPost('date', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $employeeId = $this->employee->get_logged_in_employee_info()->person_id;
-        $inventory = model(Inventory::class);
-        $dateFormatter = date_create_from_format($this->config['dateformat'] . ' ' . $this->config['timeformat'], $newdate);
-        $saleTime = $dateFormatter->format('Y-m-d H:i:s');
-
-        $saleData = [
-            'sale_time'      => $saleTime,
-            'customer_id'    => $this->request->getPost('customer_id') != '' ? $this->request->getPost('customer_id', FILTER_SANITIZE_NUMBER_INT) : null,
-            'employee_id'    => $this->request->getPost('employee_id') != '' ? $this->request->getPost('employee_id', FILTER_SANITIZE_NUMBER_INT) : null,
-            'comment'        => $this->request->getPost('comment', FILTER_SANITIZE_FULL_SPECIAL_CHARS),
-            'invoice_number' => $this->request->getPost('invoice_number') != '' ? $this->request->getPost('invoice_number', FILTER_SANITIZE_FULL_SPECIAL_CHARS) : null
-        ];
-
-        // Validate reference_code for the new payment if applicable
-        $paymentTypeNewCheck = $this->request->getPost('payment_type_new', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $paymentAmountNewCheck = $this->request->getPost('payment_amount_new');
-        if ($paymentTypeNewCheck != PAYMENT_TYPE_UNASSIGNED && !empty($paymentAmountNewCheck)
-            && in_array($paymentTypeNewCheck, get_reference_code_payment_types())) {
-            $min = (int)($this->config['payment_reference_code_min'] ?? 3);
-            $max = (int)($this->config['payment_reference_code_max'] ?? 40);
-            $rules = [
-                'reference_code_new' => "trim|required|alpha_numeric|min_length[$min]|max_length[$max]",
-            ];
-            $messages = [
-                'reference_code_new' => [
-                    'required'      => lang('Sales.must_enter_reference_code'),
-                    'alpha_numeric' => lang('Sales.reference_code_invalid_characters'),
-                    'min_length'    => lang('Sales.reference_code_length_error'),
-                    'max_length'    => lang('Sales.reference_code_length_error'),
-                ],
-            ];
-            if (!$this->validate($rules, $messages)) {
-                $errors = $this->validator->getErrors();
-                return $this->response->setJSON(['success' => false, 'message' => reset($errors), 'id' => $saleId]);
+        if (event.altKey) {
+            switch (event.keyCode) {
+                case shortcutCodes.items:
+                    $("#item").focus();
+                    $("#item").select();
+                    break;
+                case shortcutCodes.customers:
+                    $("#customer").focus();
+                    $("#customer").select();
+                    break;
+                case shortcutCodes.suspend:
+                    $("#suspend_sale_button").click();
+                    break;
+                case shortcutCodes.suspended:
+                    $("#show_suspended_sales_button").click();
+                    break;
+                case shortcutCodes.amount:
+                    $("#amount_tendered").focus();
+                    $("#amount_tendered").select();
+                    break;
+                case shortcutCodes.payment:
+                    $("#add_payment_button").click();
+                    break;
+                case shortcutCodes.complete:
+                    if (paymentsCoverTotal && $("#finish_sale_button").length) {
+                        $("#finish_sale_button").click();
+                    } else {
+                        $("#add_payment_button").click();
+                    }
+                    break;
+                case shortcutCodes.finish:
+                    $("#finish_invoice_quote_button").click();
+                    break;
+                case shortcutCodes.help:
+                    $("#show_keyboard_help").click();
+                    break;
             }
         }
 
-        // In order to maintain tradition the only element that can change on prior payments is the payment type
-        $amountTendered = 0;
-        $numberOfPayments = $this->request->getPost('number_of_payments', FILTER_SANITIZE_NUMBER_INT);
-        for ($i = 0; $i < $numberOfPayments; ++$i) {
-            $paymentId = $this->request->getPost("payment_id_$i", FILTER_SANITIZE_NUMBER_INT);
-            $paymentType = $this->request->getPost("payment_type_$i", FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $paymentAmount = parse_decimals($this->request->getPost("payment_amount_$i"));
-            $refundType = $this->request->getPost("refund_type_$i", FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $cashRefund = parse_decimals($this->request->getPost("refund_amount_$i"));
-            $referenceCode = $this->request->getPost("reference_code_$i", FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: null;
-
-            $cashAdjustment = $paymentType == lang('Sales.cash_adjustment') ? CASH_ADJUSTMENT_TRUE : CASH_ADJUSTMENT_FALSE;
-
-            if (!$cashAdjustment) {
-                $amountTendered += $paymentAmount - $cashRefund;
-            }
-
-            // Non-cash positive refund amounts
-            if (empty(strstr($refundType, lang('Sales.cash'))) && $cashRefund > 0) {    // TODO: This if and the one below can be combined.
-                // Change it to be a new negative payment (a "non-cash refund")
-                $paymentType = $refundType;
-                $paymentAmount = $paymentAmount - $cashRefund;
-                $cashRefund = 0.00;
-            }
-
-            $saleData['payments'][] = [
-                'payment_id'      => $paymentId,
-                'payment_type'    => $paymentType,
-                'payment_amount'  => $paymentAmount,
-                'cash_refund'     => $cashRefund,
-                'cash_adjustment' => $cashAdjustment,
-                'employee_id'     => $employeeId,
-                'reference_code'  => $referenceCode,
-            ];
-        }
-
-        $paymentId = NEW_ENTRY;
-        $paymentAmountNew = $this->request->getPost('payment_amount_new');
-        $paymentType = $this->request->getPost('payment_type_new', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $referenceCodeNew = $this->request->getPost('reference_code_new', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: null;
-
-        if ($paymentType != PAYMENT_TYPE_UNASSIGNED && !empty($paymentAmountNew)) {
-            $paymentAmount = parse_decimals($paymentAmountNew);
-            $cashRefund = 0;
-            if ($paymentType == lang('Sales.cash_adjustment')) {
-                $cashAdjustment = CASH_ADJUSTMENT_TRUE;
-            } else {
-                $cashAdjustment = CASH_ADJUSTMENT_FALSE;
-                $amountTendered += $paymentAmount;
-                $saleInfo = $this->sale->get_info($saleId)->getRowArray();
-
-                if ($amountTendered > $saleInfo['amount_due']) {
-                    $cashRefund = $amountTendered - $saleInfo['amount_due'];
-                }
-            }
-
-            $saleData['payments'][] = [
-                'payment_id'      => $paymentId,
-                'payment_type'    => $paymentType,
-                'payment_amount'  => $paymentAmount,
-                'cash_refund'     => $cashRefund,
-                'cash_adjustment' => $cashAdjustment,
-                'employee_id'     => $employeeId,
-                'reference_code'  => $referenceCodeNew,
-            ];
-        }
-
-        $inventory->update('POS ' . $saleId, ['trans_date' => $saleTime]);    // TODO: Reflection Exception
-        if ($this->sale->update($saleId, $saleData)) {
-            return $this->response->setJSON(['success' => true, 'message' => lang('Sales.successfully_updated'), 'id' => $saleId]);
-        } else {
-            return $this->response->setJSON(['success' => false, 'message' => lang('Sales.unsuccessfully_updated'), 'id' => $saleId]);
+        switch (event.keyCode) {
+            case shortcutCodes.cancel:
+                $("#cancel_sale_button").click();
+                break;
         }
     }
+</script>
 
-    /**
-     * This is used to cancel a suspended pos sale, quote.
-     * Completed sales (POS Sales or Invoiced Sales) can not be removed from the system
-     * Work orders can be canceled but are not physically removed from the sales history.
-     * Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @throws ReflectionException
-     * @noinspection PhpUnused
-     */
-    public function postCancel(): ResponseInterface|string
-    {
-        $sale_id = $this->sale_lib->get_sale_id();
-        if ($sale_id != NEW_ENTRY && $sale_id != '') {
-            $sale_type = $this->sale_lib->getSaleType();
-
-            if ($this->config['dinner_table_enable']) {
-                $dinner_table = $this->sale_lib->get_dinner_table();
-                $this->dinner_table->release($dinner_table);
-            }
-
-            if ($sale_type == SALE_TYPE_WORK_ORDER) {
-                $this->sale->update_sale_status($sale_id, CANCELED);
-            } else {
-                $this->sale->delete($sale_id);
-                $this->session->set('sale_id', NEW_ENTRY);
-            }
-        } else {
-            $this->sale_lib->remove_temp_items();
-        }
-
-        $this->sale_lib->clear_all();
-        return $this->reload();
-    }
-
-    /**
-     * Discards the suspended sale. Used in app/Views/sales/quote.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function getDiscardSuspendedSale(): ResponseInterface|string
-    {
-        $suspended_id = $this->sale_lib->get_suspended_id();
-        $this->sale_lib->clear_all();
-        $this->sale->delete_suspended_sale($suspended_id);
-        return $this->reload();
-    }
-
-    /**
-     * Suspend the current sale.
-     * If the current sale is already suspended then update the existing suspended sale otherwise create
-     * it as a new suspended sale. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface|string
-     * @noinspection PhpUnused
-     */
-    public function postSuspend(): ResponseInterface|string
-    {
-        $sale_id = $this->sale_lib->get_sale_id();
-        $dinner_table = $this->sale_lib->get_dinner_table();
-        $cart = $this->sale_lib->get_cart();
-        $payments = $this->sale_lib->getPayments();
-        $employee_id = $this->employee->get_logged_in_employee_info()->person_id;
-        $customer_id = $this->sale_lib->get_customer();
-        $invoice_number = $this->sale_lib->get_invoice_number();
-        $work_order_number = $this->sale_lib->get_work_order_number();
-        $quote_number = $this->sale_lib->get_quote_number();
-        $sale_type = $this->sale_lib->getSaleType();
-
-        if ($sale_type == '') {
-            $sale_type = SALE_TYPE_POS;
-        }
-
-        $comment = $this->sale_lib->get_comment();
-        $sale_status = SUSPENDED;
-
-        $data = [];
-        $sales_taxes = [[], []];
-
-        $saleIdNum = $this->sale->save_value($sale_id, $sale_status, $cart, $customer_id, $employee_id, $comment, $invoice_number, $work_order_number, $quote_number, $sale_type, $payments, $dinner_table, $sales_taxes);
-
-        if ($saleIdNum === INSUFFICIENT_GIFTCARD_BALANCE) {
-            $data['error'] = lang('Sales.insufficient_giftcard_balance');
-        } elseif ($saleIdNum === INSUFFICIENT_REWARD_POINTS) {
-            $data['error'] = lang('Sales.insufficient_reward_points');
-        } elseif ($saleIdNum === NEW_ENTRY) {
-            $data['error'] = lang('Sales.unsuccessfully_suspended_sale');
-            $this->sale_lib->clear_all();
-        } else {
-            $data['success'] = lang('Sales.successfully_suspended_sale');
-            $this->sale_lib->clear_all();
-        }
-
-        return $this->reload($data);
-    }
-
-    /**
-     * List suspended sales
-     * @return string
-     */
-    public function getSuspended(): string
-    {
-        $data = [];
-        $customer_id = $this->sale_lib->get_customer();
-        $data['suspended_sales'] = $this->sale->get_all_suspended($customer_id);
-        return view('sales/suspended', $data);
-    }
-
-    /**
-     * Unsuspended sales are now left in the tables and are only removed
-     * when they are intentionally cancelled. Used in app/Views/sales/suspended.php.
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postUnsuspend(): ResponseInterface|string
-    {
-        $personId = $this->session->get('person_id');
-
-        if (!$this->employee->has_grant('reports_sales', $personId)) {
-            return $this->response->setStatusCode(403)
-                ->setJSON(['success' => false, 'message' => lang('Sales.not_authorized')]);
-        }
-
-        $saleId = $this->request->getPost('suspended_sale_id', FILTER_SANITIZE_NUMBER_INT);
-
-        if ($saleId > 0 && $this->sale->getSaleStatus($saleId) == SUSPENDED) {
-            $this->sale_lib->clear_all();
-            $this->sale_lib->copy_entire_sale($saleId);
-        }
-
-        // Set current register mode to reflect that of unsuspended order type
-        $this->change_register_mode($this->sale_lib->getSaleType());
-
-        return $this->reload();
-    }
-
-    /**
-     * Show Keyboard shortcut modal. Used in app/Views/sales/register.php
-     *
-     * @return string
-     * @noinspection PhpUnused
-     */
-    public function getSalesKeyboardHelp(): string
-    {
-        return view('sales/help', [
-            'keyboardShortcuts' => $this->sale_lib->getKeyShortcuts()
-        ]);
-    }
-
-    /**
-     * Check the validity of an invoice number. Used in app/Views/sales/form.php.
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postCheckInvoiceNumber(): ResponseInterface
-    {
-        $sale_id = $this->request->getPost('sale_id', FILTER_SANITIZE_NUMBER_INT);
-        $invoice_number = $this->request->getPost('invoice_number', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $exists = !empty($invoice_number) && $this->sale->check_invoice_number_exists($invoice_number, $sale_id);
-        return $this->response->setJSON(!$exists ? 'true' : 'false');
-    }
-
-    /**
-     * @param array $cart
-     * @return array
-     */
-    public function get_filtered(array $cart): array
-    {
-        $filtered_cart = [];
-        foreach ($cart as $id => $item) {
-            if ($item['print_option'] == PRINT_ALL) // Always include
-            {
-                $filtered_cart[$id] = $item;
-            } elseif ($item['print_option'] == PRINT_PRICED && $item['price'] != 0)  // Include only if the price is not zero
-            {
-                $filtered_cart[$id] = $item;
-            }
-            // print_option 2 is never included
-        }
-
-        return $filtered_cart;
-    }
-
-    /**
-     * Update the item number in the register. Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postChangeItemNumber(): ResponseInterface
-    {
-        $item_id = $this->request->getPost('item_id', FILTER_SANITIZE_NUMBER_INT);
-        $item_number = $this->request->getPost('item_number', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $this->item->update_item_number($item_id, $item_number);
-        $cart = $this->sale_lib->get_cart();
-        $x = $this->search_cart_for_item_id($item_id, $cart);
-        if ($x !== null) {
-            $cart[$x]['item_number'] = $item_number;
-        }
-        $this->sale_lib->set_cart($cart);
-        return $this->response->setJSON(['success' => true]);
-    }
-
-    /**
-     * Change a given item name. Used in app/Views/sales/register.php.
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postChangeItemName(): ResponseInterface
-    {
-        $item_id = $this->request->getPost('item_id', FILTER_SANITIZE_NUMBER_INT);
-        $name = $this->request->getPost('item_name', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-
-        $this->item->update_item_name($item_id, $name);
-
-        $cart = $this->sale_lib->get_cart();
-        $x = $this->search_cart_for_item_id($item_id, $cart);
-
-        if ($x !== null) {
-            $cart[$x]['name'] = $name;
-        }
-
-        $this->sale_lib->set_cart($cart);
-        return $this->response->setJSON(['success' => true]);
-    }
-
-    /**
-     * Update the given item description.  Used in app/Views/sales/register.php
-     *
-     * @return ResponseInterface
-     * @noinspection PhpUnused
-     */
-    public function postChangeItemDescription(): ResponseInterface
-    {
-        $item_id = $this->request->getPost('item_id', FILTER_SANITIZE_NUMBER_INT);
-        $description = $this->request->getPost('item_description', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-
-        $this->item->update_item_description($item_id, $description);
-
-        $cart = $this->sale_lib->get_cart();
-        $x = $this->search_cart_for_item_id($item_id, $cart);
-
-        if ($x !== null) {
-            $cart[$x]['description'] = $description;
-        }
-
-        $this->sale_lib->set_cart($cart);
-        return $this->response->setJSON(['success' => true]);
-    }
-
-    /**
-     * @param int $search_item_id
-     * @param array $shopping_cart
-     * @return int|string|null
-     */
-    public function search_cart_for_item_id(int $search_item_id, array $shopping_cart): int|string|null
-    {
-        foreach ($shopping_cart as $key => $val) {
-            if ($val['item_id'] === $search_item_id) {
-                return $key;
-            }
-        }
-
-        return null;
-    }
-}
+<?= view('partial/footer') ?>
