@@ -12,7 +12,7 @@ networks:
 
 services:
     mysql:
-        image: ${OSPOS_DB_IMAGE:-mariadb:10.5}
+        image: mariadb:10.5
         container_name: mysql
         restart: always
         expose:
@@ -20,6 +20,7 @@ services:
         networks:
             - app_net
         volumes:
+            - ./app/Database/database.sql:/docker-entrypoint-initdb.d/database.sql
             - mysql:/var/lib/mysql:rw
         environment:
             - MYSQL_ROOT_PASSWORD=pointofsale
@@ -46,7 +47,6 @@ services:
             - .:/app
         environment:
             - CI_ENVIRONMENT=development
-            - ALLOWED_HOSTNAMES=localhost
             - MYSQL_USERNAME=admin
             - MYSQL_PASSWORD=pointofsale
             - MYSQL_DB_NAME=ospos
